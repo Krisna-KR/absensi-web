@@ -11,8 +11,8 @@ export default function KaryawanPage() {
   const [loading, setLoading] = useState(false);
   const [editId, setEditId] = useState(null);
 
-  const [form, setForm] = useState({
-    nip: '', nama_lengkap: '', jabatan: '', id_departemen: '', id_tim: '', device_key: ''
+const [form, setForm] = useState({
+    nip: '', nama_lengkap: '', jabatan: '', id_departemen: '', id_tim: '', device_key: '', reset_device: false
   });
 
   useEffect(() => { fetchData(); }, []);
@@ -30,21 +30,22 @@ const generateDeviceKey = () => {
     for (let i = 0; i < 12; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
-    setForm({ ...form, device_key: result });
+    // Tambahkan bendera reset_device: true
+    setForm({ ...form, device_key: result, reset_device: true });
   };
 
 const handleEdit = (kar) => {
     setEditId(kar.id);
     setForm({
       nip: kar.nip, nama_lengkap: kar.nama_lengkap, jabatan: kar.jabatan || '',
-      id_departemen: kar.id_departemen || '', id_tim: kar.id_tim || '', device_key: kar.device_key || ''
+      id_departemen: kar.id_departemen || '', id_tim: kar.id_tim || '', device_key: kar.device_key || '', reset_device: false
     });
     setShowModal(true);
   };
 
-const openTambah = () => {
+  const openTambah = () => {
     setEditId(null);
-    setForm({ nip: '', nama_lengkap: '', jabatan: '', id_departemen: '', id_tim: '', device_key: '' });
+    setForm({ nip: '', nama_lengkap: '', jabatan: '', id_departemen: '', id_tim: '', device_key: '', reset_device: false });
     setShowModal(true);
   };
 
@@ -52,11 +53,17 @@ const handleSimpan = async (e) => {
     e.preventDefault();
     setLoading(true);
 
+    // 1. Deklarasikan objek payload terlebih dahulu
     const payload = {
       nip: form.nip, nama_lengkap: form.nama_lengkap, jabatan: form.jabatan,
       id_departemen: form.id_departemen || null, id_tim: form.id_tim || null,
       device_key: form.device_key || null, role: 'Karyawan'
     };
+
+    // 2. Modifikasi payload jika bendera reset aktif
+    if (form.reset_device) {
+      payload.device_id = null;
+    }
 
     let error;
     if (editId) {
