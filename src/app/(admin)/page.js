@@ -2,11 +2,17 @@ import Image from 'next/image';
 import RealtimeClock from '@/components/RealtimeClock';
 import { supabase } from '@/utils/supabase/client';
 
+// Tambahkan baris ini untuk membunuh sistem cache
+export const dynamic = 'force-dynamic';
+
 export default async function Dashboard() {
   const { data: absensi } = await supabase.from('absensi').select('status');
-
-  const totalHadir = absensi?.length || 0;
+  
+  // ... sisa kode ke bawah biarkan sama persis ...
+  // Perbaikan logika kalkulasi
+  const totalHadir = absensi?.filter(a => a.status === 'Hadir' || a.status === 'Late').length || 0;
   const totalTelat = absensi?.filter(a => a.status === 'Late').length || 0;
+  const totalCutiIzin = absensi?.filter(a => a.status === 'Cuti' || a.status === 'Izin').length || 0;
 
   return (
     <div className="space-y-6">
@@ -27,15 +33,15 @@ export default async function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
          <div className="h-32 rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center shadow-sm">
             <span className="font-semibold text-slate-500">Karyawan Hadir</span>
-            <span className="text-3xl font-bold text-blue-600 mt-2">{totalHadir}</span>
+            <span className="text-4xl font-bold text-blue-600 mt-2">{totalHadir}</span>
          </div>
          <div className="h-32 rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center shadow-sm">
             <span className="font-semibold text-slate-500">Keterlambatan</span>
-            <span className="text-3xl font-bold text-rose-500 mt-2">{totalTelat}</span>
+            <span className="text-4xl font-bold text-rose-500 mt-2">{totalTelat}</span>
          </div>
-         <div className="h-32 rounded-xl border border-slate-200 border-dashed bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-            <span className="font-semibold">Cuti / Izin</span>
-            <span className="text-xs mt-1">Data belum tersedia</span>
+         <div className="h-32 rounded-xl border border-slate-200 bg-white flex flex-col items-center justify-center shadow-sm">
+            <span className="font-semibold text-slate-500">Cuti / Izin</span>
+            <span className="text-4xl font-bold text-amber-500 mt-2">{totalCutiIzin}</span>
          </div>
       </div>
     </div>
