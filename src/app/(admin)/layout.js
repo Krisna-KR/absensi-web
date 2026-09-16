@@ -1,12 +1,11 @@
 'use client';
-import { Bell, Calendar, Home, LogOut, Users, FileText, Umbrella } from "lucide-react";
+import { Bell, Calendar, Home, LogOut, Users, FileText, Umbrella, QrCode } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
 
-  // Logika pengecekan URL aktif
   const getNavClass = (path) => {
     const isActive = pathname === path;
     return isActive
@@ -43,6 +42,10 @@ export default function AdminLayout({ children }) {
             </Link>
             <Link href="/master" className={getNavClass("/master")}>
                 <Umbrella className="w-4 h-4" /> Master Data
+            </Link>
+            {/* Tombol Kiosk QR ke Tab Baru */}
+            <Link href="/qr-kiosk" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 bg-blue-50 hover:bg-blue-100 transition px-4 py-2 rounded-lg font-semibold border border-blue-200">
+                <QrCode className="w-4 h-4" /> Buka Kiosk QR
             </Link>
         </div>
 

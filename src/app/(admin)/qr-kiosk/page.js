@@ -8,8 +8,8 @@ export default function QrKiosk() {
   const [countdown, setCountdown] = useState(30);
 
   const generateToken = () => {
-    const rawString = `ABSENSI-KR-${Date.now()}`;
-    setToken(btoa(rawString)); // Encode ke Base64 dasar
+    const tokenVal = `ABSENSI-KR-${Date.now()}`;
+    setToken(tokenVal);
     setCountdown(30);
   };
 
