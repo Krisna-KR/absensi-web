@@ -7,20 +7,27 @@ export default function KehadiranPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+ useEffect(() => {
     const fetchData = async () => {
       // Kalkulasi waktu lokal Indonesia (GMT+7) untuk filter database
       const date = new Date();
       const localDate = new Date(date.getTime() + (7 * 60 * 60000));
       const today = localDate.toISOString().split('T')[0];
 
+      // Penambahan +07:00 mutlak wajib agar absen pagi tidak hilang
       const { data: absensiData, error } = await supabase
         .from('absensi')
         .select('*, karyawan(nama_lengkap, nip, jabatan)')
-        .gte('waktu_masuk', `${today}T00:00:00`)
+        .gte('waktu_masuk', `${today}T00:00:00+07:00`)
         .order('waktu_masuk', { ascending: false });
 
-      if (!error && absensiData) setData(absensiData);
+      // Penangkap galat paksa agar masalah terlihat
+      if (error) {
+        console.error("Galat Supabase:", error);
+        alert("Terjadi penolakan kueri: " + error.message);
+      }
+
+      if (absensiData) setData(absensiData);
       setLoading(false);
     };
     fetchData();
