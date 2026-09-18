@@ -2,17 +2,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
-import { CheckCircle2, AlertCircle, Camera, Lock } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Camera, Lock, RefreshCcw } from 'lucide-react';
 
 export default function MobileScannerPage() {
   const [step, setStep] = useState(1);
-  const [deviceKey, setDeviceKey] = useState('');
+  const [form, setForm] = useState({ username: '', password: '' });
   const [karyawan, setKaryawan] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  
+  // State Kamera
   const html5QrCodeRef = useRef(null);
+  const [cameraMode, setCameraMode] = useState('environment'); // 'environment' (belakang) atau 'user' (depan)
+  const [isCameraStarting, setIsCameraStarting] = useState(false);
 
   useEffect(() => {
+    // Cek sesi penguncian perangkat
     const savedKaryawan = localStorage.getItem('karyawan_data');
     if (savedKaryawan) {
       setKaryawan(JSON.parse(savedKaryawan));
@@ -25,14 +30,23 @@ export default function MobileScannerPage() {
     setLoading(true);
     setMessage('');
 
-    const { data, error } = await supabase.from('karyawan').select('*').eq('device_key', deviceKey).single();
+    // Validasi Akun
+    const { data, error } = await supabase.from('karyawan')
+      .select('*')
+      .eq('username', form.username)
+      .eq('password', form.password)
+      .single();
     
     if (error || !data) {
-      setMessage('Device Key tidak ditemukan.');
-      setLoading(false);
-      return;
+      setMessage('Username atau Password salah.');
+      setLoading(false); return;
+    }
+    if (!data.is_approved) {
+      setMessage('Akun belum disetujui oleh Admin.');
+      setLoading(false); return;
     }
 
+    // Penguncian Perangkat (Sesi Abadi)
     let currentDeviceId = localStorage.getItem('device_id');
     if (!currentDeviceId) {
       currentDeviceId = crypto.randomUUID();
@@ -40,13 +54,13 @@ export default function MobileScannerPage() {
     }
 
     if (data.device_id && data.device_id !== currentDeviceId) {
-      setMessage('Akses ditolak! Key ini sudah terkait dengan perangkat lain.');
-      setLoading(false);
-      return;
+      setMessage('Akses Ditolak: Akun ini sudah terkunci di perangkat lain.');
+      setLoading(false); return;
     }
 
     if (!data.device_id) {
       await supabase.from('karyawan').update({ device_id: currentDeviceId }).eq('id', data.id);
+      data.device_id = currentDeviceId;
     }
 
     localStorage.setItem('karyawan_data', JSON.stringify(data));
@@ -55,27 +69,47 @@ export default function MobileScannerPage() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    if (step === 2) {
-      const qrCodeRegionId = "reader";
-      const html5QrCode = new Html5Qrcode(qrCodeRegionId);
+  const startCamera = async (mode) => {
+    if (isCameraStarting) return;
+    setIsCameraStarting(true);
+    
+    try {
+      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current.clear();
+      }
+
+      const html5QrCode = new Html5Qrcode("reader");
       html5QrCodeRef.current = html5QrCode;
 
-      html5QrCode.start(
-        { facingMode: "environment" },
+      await html5QrCode.start(
+        { facingMode: mode },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText) => {
           await html5QrCode.stop().catch(() => {});
           await prosesAbsensi(decodedText);
         },
-        () => {}
-      ).catch((err) => {
-        setMessage('Gagal menginisialisasi kamera: ' + err);
-      });
+        () => {} // Abaikan error background
+      );
+    } catch (err) {
+      setMessage('Kamera gagal dimuat: ' + err.message);
+    }
+    setIsCameraStarting(false);
+  };
 
+  const toggleCamera = () => {
+    const newMode = cameraMode === 'environment' ? 'user' : 'environment';
+    setCameraMode(newMode);
+    startCamera(newMode);
+  };
+
+  // Pelatuk mulai kamera saat masuk step 2
+  useEffect(() => {
+    if (step === 2) {
+      startCamera(cameraMode);
       return () => {
-        if (html5QrCode && html5QrCode.isScanning) {
-          html5QrCode.stop().catch(() => {});
+        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+          html5QrCodeRef.current.stop().catch(() => {});
         }
       };
     }
@@ -89,42 +123,34 @@ export default function MobileScannerPage() {
       if (!qrData.startsWith('ABSENSI-KR-')) throw new Error('Kode QR tidak valid.');
       
       const qrTimestamp = parseInt(qrData.split('-')[2]);
-      const selisihDetik = (Date.now() - qrTimestamp) / 1000;
-      
-      if (selisihDetik > 60) throw new Error('Kode QR sudah kedaluwarsa. Harap scan ulang dari Kiosk.');
+      if ((Date.now() - qrTimestamp) / 1000 > 60) throw new Error('Kode QR kedaluwarsa.');
 
       const currentHour = new Date().getHours();
       let jenisAbsen = '';
       
       if (currentHour >= 7 && currentHour <= 12) jenisAbsen = 'MASUK';
       else if (currentHour >= 12 && currentHour <= 23) jenisAbsen = 'KELUAR';
-      else throw new Error('Di luar jam operasional absensi (07:00 - 23:59).');
+      else throw new Error('Di luar jam operasional (07:00 - 23:59).');
 
       const today = new Date().toISOString().split('T')[0];
 
       if (jenisAbsen === 'MASUK') {
         const { data: cekMasuk } = await supabase.from('absensi').select('id').eq('id_karyawan', karyawan.id).gte('waktu_masuk', `${today}T00:00:00`).single();
-        if (cekMasuk) throw new Error('Anda sudah melakukan absensi MASUK hari ini.');
+        if (cekMasuk) throw new Error('Sudah absen MASUK hari ini.');
 
-        const { error } = await supabase.from('absensi').insert([{
-          id_karyawan: karyawan.id,
-          waktu_masuk: new Date().toISOString(),
-          status: currentHour > 8 ? 'Late' : 'Hadir'
-        }]);
+        const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: new Date().toISOString(), status: currentHour > 8 ? 'Late' : 'Hadir' }]);
         if (error) throw error;
         setMessage('BERHASIL ABSEN MASUK');
 
-      } else if (jenisAbsen === 'KELUAR') {
+      } else {
         const { data: dataMasuk } = await supabase.from('absensi').select('*').eq('id_karyawan', karyawan.id).gte('waktu_masuk', `${today}T00:00:00`).order('waktu_masuk', { ascending: false }).limit(1);
-        
-        if (!dataMasuk || dataMasuk.length === 0) throw new Error('Anda belum absen masuk hari ini.');
-        if (dataMasuk[0].waktu_keluar) throw new Error('Anda sudah melakukan absensi KELUAR hari ini.');
+        if (!dataMasuk || dataMasuk.length === 0) throw new Error('Belum absen MASUK hari ini.');
+        if (dataMasuk[0].waktu_keluar) throw new Error('Sudah absen KELUAR hari ini.');
 
         const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', dataMasuk[0].id);
         if (error) throw error;
         setMessage('BERHASIL ABSEN KELUAR');
       }
-
     } catch (error) {
       setMessage(`GAGAL: ${error.message}`);
     }
@@ -145,24 +171,38 @@ export default function MobileScannerPage() {
         <div className="p-6">
           {step === 1 && (
             <form onSubmit={handleLogin} className="space-y-4">
-              <p className="text-slate-600 text-sm text-center mb-6">Masukkan Device Key untuk menautkan perangkat ini.</p>
+              <p className="text-slate-600 text-sm text-center mb-6">Masuk untuk menautkan perangkat ini permanen.</p>
               <div>
-                <label className="text-sm font-semibold text-slate-700 block mb-1">Device Key</label>
-                <input required type="text" value={deviceKey} onChange={e => setDeviceKey(e.target.value.toUpperCase())} placeholder="KR-ABCD12345678" className="w-full px-4 py-3 border border-slate-300 rounded-xl text-center font-mono font-bold text-lg tracking-widest uppercase focus:ring-2 focus:ring-blue-500"/>
+                <label className="text-sm font-semibold text-slate-700 block mb-1">Username</label>
+                <input required type="text" value={form.username} onChange={e => setForm({...form, username: e.target.value.toLowerCase()})} className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"/>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700 block mb-1">Password</label>
+                <input required type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500"/>
               </div>
               {message && <div className="p-3 bg-rose-50 text-rose-600 text-sm rounded-lg flex gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5"/> <p>{message}</p></div>}
               <button disabled={loading} type="submit" className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">
-                {loading ? 'Memvalidasi...' : 'Tautkan Perangkat'}
+                {loading ? 'Memvalidasi...' : 'Masuk & Tautkan'}
               </button>
+              <div className="text-center mt-4">
+                 <button type="button" onClick={() => alert('Fitur Registrasi akan dibangun di Tahap 2')} className="text-blue-600 text-sm font-semibold">Belum punya akun? Daftar disini</button>
+              </div>
             </form>
           )}
 
           {step === 2 && (
             <div className="flex flex-col items-center">
               <div id="reader" className="w-full overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-900 min-h-[300px]"></div>
-              <div className="flex items-center gap-2 mt-4 text-slate-500 text-sm">
-                <Camera className="w-4 h-4 text-blue-600 animate-pulse" />
-                <span>Arahkan kamera ke QR Kiosk</span>
+              
+              {/* Tombol Toggle Kamera */}
+              <button disabled={isCameraStarting} onClick={toggleCamera} className="mt-6 flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-full font-semibold transition border border-slate-300">
+                <RefreshCcw className={`w-5 h-5 ${isCameraStarting ? 'animate-spin' : ''}`} />
+                {cameraMode === 'environment' ? 'Pakai Kamera Depan' : 'Pakai Kamera Belakang'}
+              </button>
+
+              <div className="mt-4 text-slate-500 text-sm text-center">
+                Arahkan kamera ke QR Kiosk.<br/>
+                <span className="text-rose-500 text-xs">(Aplikasi tidak memiliki tombol Keluar)</span>
               </div>
             </div>
           )}

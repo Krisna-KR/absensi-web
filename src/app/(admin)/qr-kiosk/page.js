@@ -5,12 +5,12 @@ import { RefreshCw } from 'lucide-react';
 
 export default function QrKiosk() {
   const [token, setToken] = useState('');
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(10);
 
   const generateToken = () => {
     const tokenVal = `ABSENSI-KR-${Date.now()}`;
     setToken(tokenVal);
-    setCountdown(30);
+    setCountdown(10);
   };
 
   useEffect(() => {
