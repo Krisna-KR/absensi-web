@@ -7,15 +7,13 @@ export default function KehadiranPage() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [periode, setPeriode] = useState('hari_ini');
-  const [customDate, setCustomDate] = useState(''); // Untuk tanggal custom
+  const [customDate, setCustomDate] = useState('');
 
-  useEffect(() => {
-    fetchData();
-  }, [periode, customDate]);
+  useEffect(() => { fetchData(); }, [periode, customDate]);
 
   const fetchData = async () => {
     setLoading(true);
-    const now = new Date(new Date().getTime() + (7 * 60 * 60000)); // Waktu lokal GMT+7
+    const now = new Date(new Date().getTime() + (7 * 60 * 60000)); 
     let startDate, endDate;
 
     if (periode === 'hari_ini') {
@@ -32,7 +30,7 @@ export default function KehadiranPage() {
       startDate = `${y}-01-01T00:00:00+07:00`;
       endDate = `${y}-12-31T23:59:59+07:00`;
     } else if (periode === 'custom') {
-      if (!customDate) { setLoading(false); return; } // Jangan query jika tanggal kosong
+      if (!customDate) { setLoading(false); return; } 
       startDate = `${customDate}T00:00:00+07:00`;
       endDate = `${customDate}T23:59:59+07:00`;
     }
@@ -44,11 +42,7 @@ export default function KehadiranPage() {
       .lte('waktu_masuk', endDate)
       .order('waktu_masuk', { ascending: false });
 
-    if (error) {
-      console.error("Galat Supabase:", error);
-      alert("Terjadi penolakan kueri: " + error.message);
-    }
-
+    if (error) alert("Terjadi penolakan kueri: " + error.message);
     setData(absensiData || []);
     setLoading(false);
   };
@@ -58,7 +52,6 @@ export default function KehadiranPage() {
     return new Date(isoString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Fungsi konversi format tanggal: 2026-09-01 -> 01 Sept 2026
   const formatTanggal = (isoString) => {
     if (!isoString) return '-';
     const date = new Date(isoString);
@@ -71,14 +64,12 @@ export default function KehadiranPage() {
 
   return (
     <div className="space-y-6">
-      {/* HEADER RESPONSIF: Tersusun vertikal di HP, horizontal di PC */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Rekap Kehadiran</h1>
           <p className="text-slate-500 text-sm mt-1">Pemantauan jam masuk dan jam keluar aktual karyawan.</p>
         </div>
         
-        {/* FILTER BAR RESPONSIF */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto bg-slate-50 border border-slate-200 p-2 rounded-lg">
           <div className="flex items-center gap-2 px-2">
             <Calendar className="w-4 h-4 text-slate-500" />
@@ -89,20 +80,18 @@ export default function KehadiranPage() {
               <option value="custom">Pilih Tanggal...</option>
             </select>
           </div>
-          {/* Muncul hanya jika mode custom */}
           {periode === 'custom' && (
             <input 
               type="date" 
               value={customDate} 
               onChange={(e) => setCustomDate(e.target.value)} 
-              className="text-sm border border-slate-300 rounded px-2 py-1 w-full sm:w-auto focus:ring-2 focus:ring-blue-500 outline-none"
+              className="text-sm border border-slate-300 rounded px-2 py-1 w-full sm:w-auto focus:ring-2 focus:ring-blue-500 outline-none bg-white"
             />
           )}
         </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden min-h-[400px]">
-        {/* WADAH TABEL RESPONSIF: Bisa di-scroll ke samping di HP */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap min-w-[700px]">
             <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">

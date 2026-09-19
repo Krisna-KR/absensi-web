@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, X, Check, Trash2, KeyRound, Smartphone } from 'lucide-react';
+import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock } from 'lucide-react';
 
 export default function KaryawanPage() {
   const [karyawan, setKaryawan] = useState([]);
@@ -11,6 +11,10 @@ export default function KaryawanPage() {
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', password: 'admin123', id_departemen: '', id_tim: '' });
+  
+  // State untuk Modal Input Manual
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualForm, setManualForm] = useState({ id_karyawan: '', waktu_masuk: '', waktu_keluar: '', status: 'Hadir' });
 
   useEffect(() => { fetchData(); }, []);
 
@@ -42,15 +46,32 @@ export default function KaryawanPage() {
 
   const handleSimpan = async (e) => {
     e.preventDefault(); setLoading(true);
-    const payload = { ...form, role: 'Karyawan', is_approved: true }; // Tambah manual admin lgsg approve
-    
-    // Konversi null string dropdown
+    const payload = { ...form, role: 'Karyawan', is_approved: true }; 
     if(!payload.id_departemen) payload.id_departemen = null;
     if(!payload.id_tim) payload.id_tim = null;
 
     const { error } = await supabase.from('karyawan').insert([payload]);
     if (error) alert('Gagal: ' + error.message);
     else { setShowModal(false); fetchData(); }
+    setLoading(false);
+  };
+
+  // Fungsi Input Manual
+  const bukaInputManual = (id) => {
+    setManualForm({ id_karyawan: id, waktu_masuk: '', waktu_keluar: '', status: 'Hadir' });
+    setShowManualModal(true);
+  };
+
+  const simpanManual = async (e) => {
+    e.preventDefault(); setLoading(true);
+    const payload = { id_karyawan: manualForm.id_karyawan, status: manualForm.status };
+    
+    if (manualForm.waktu_masuk) payload.waktu_masuk = new Date(manualForm.waktu_masuk).toISOString();
+    if (manualForm.waktu_keluar) payload.waktu_keluar = new Date(manualForm.waktu_keluar).toISOString();
+
+    const { error } = await supabase.from('absensi').insert([payload]);
+    if (error) alert('Gagal: ' + error.message);
+    else { alert('Berhasil input data absen manual.'); setShowManualModal(false); }
     setLoading(false);
   };
 
@@ -68,7 +89,7 @@ export default function KaryawanPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
+          <table className="w-full text-left text-sm text-slate-600 min-w-[600px]">
             <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
               <tr>
                 <th className="px-6 py-4 font-semibold">Profil & Akun</th>
@@ -99,7 +120,12 @@ export default function KaryawanPage() {
                       {!kar.is_approved && (
                          <button onClick={() => aksiApprove(kar.id)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui Akun"><Check className="w-4 h-4"/></button>
                       )}
+                      
+                      {/* TOMBOL INPUT MANUAL DITAMBAHKAN DI SINI */}
+                      <button onClick={() => bukaInputManual(kar.id)} className="p-2 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 rounded-lg" title="Input Absen Manual"><Clock className="w-4 h-4"/></button>
+
                       <button onClick={() => aksiResetSandi(kar.id)} className="p-2 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg" title="Reset Sandi ke admin123"><KeyRound className="w-4 h-4"/></button>
+                      
                       {kar.device_id && (
                          <button onClick={() => aksiKick(kar.id)} className="p-2 bg-rose-100 text-rose-700 hover:bg-rose-200 rounded-lg" title="Kick / Unbind Perangkat"><Trash2 className="w-4 h-4"/></button>
                       )}
@@ -125,16 +151,44 @@ export default function KaryawanPage() {
                 <div><label className="text-sm font-semibold">Username</label><input required type="text" value={form.username} onChange={e => setForm({...form, username: e.target.value.toLowerCase().replace(/\s/g,'')})} className="w-full px-3 py-2 border rounded-lg mt-1"/></div>
               </div>
               <div><label className="text-sm font-semibold">Nama Lengkap</label><input required type="text" value={form.nama_lengkap} onChange={e => setForm({...form, nama_lengkap: e.target.value})} className="w-full px-3 py-2 border rounded-lg mt-1"/></div>
-              <div>
-                <label className="text-sm font-semibold">Departemen</label>
-                <select value={form.id_departemen} onChange={e => setForm({...form, id_departemen: e.target.value, id_tim: ''})} className="w-full px-3 py-2 border rounded-lg mt-1">
-                  <option value="">-- Kosong --</option>
-                  {departemen.map(d => (<option key={d.id} value={d.id}>{d.nama_departemen}</option>))}
-                </select>
-              </div>
               <div className="pt-4 flex justify-end gap-3">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 rounded-lg">Batal</button>
                 <button type="submit" disabled={loading} className="px-4 py-2 text-white bg-blue-600 rounded-lg">Simpan</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL INPUT MANUAL */}
+      {showManualModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-slate-50">
+              <h2 className="text-lg font-bold">Input Absen Manual</h2>
+              <button onClick={() => setShowManualModal(false)} className="text-slate-400 hover:text-rose-500"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={simpanManual} className="p-6 space-y-4">
+              <div>
+                <label className="text-sm font-semibold">Waktu Masuk</label>
+                <input required type="datetime-local" value={manualForm.waktu_masuk} onChange={e => setManualForm({...manualForm, waktu_masuk: e.target.value})} className="w-full px-3 py-2 border rounded-lg mt-1"/>
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Waktu Keluar (Opsional)</label>
+                <input type="datetime-local" value={manualForm.waktu_keluar} onChange={e => setManualForm({...manualForm, waktu_keluar: e.target.value})} className="w-full px-3 py-2 border rounded-lg mt-1"/>
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Status</label>
+                <select value={manualForm.status} onChange={e => setManualForm({...manualForm, status: e.target.value})} className="w-full px-3 py-2 border rounded-lg mt-1">
+                  <option value="Hadir">Hadir (On-Time)</option>
+                  <option value="Late">Terlambat (Late)</option>
+                  <option value="Cuti">Cuti</option>
+                  <option value="Izin">Izin</option>
+                </select>
+              </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowManualModal(false)} className="px-4 py-2 bg-slate-100 rounded-lg">Batal</button>
+                <button type="submit" disabled={loading} className="px-4 py-2 text-white bg-indigo-600 rounded-lg">{loading ? 'Proses...' : 'Simpan Absen'}</button>
               </div>
             </form>
           </div>
