@@ -14,39 +14,64 @@ export default function MobileScannerPage() {
   
   const html5QrCodeRef = useRef(null);
   const [cameraMode, setCameraMode] = useState('environment');
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
 
-useEffect(() => {
+  useEffect(() => {
+    // 1. Usir sesi hantu (Super Clear Cache)
     const checkSesi = async () => {
       const savedKaryawan = localStorage.getItem('karyawan_data');
       if (savedKaryawan) {
-        const parsed = JSON.parse(savedKaryawan);
-        // Validasi ke Database: Apakah user ini masih ada?
-        const { data, error } = await supabase.from('karyawan').select('id').eq('id', parsed.id).single();
-        if (error || !data) {
-          // Jika sudah dihapus dari DB, bersihkan memori HP (Usir Hantu)
+        try {
+          const parsed = JSON.parse(savedKaryawan);
+          const { data, error } = await supabase.from('karyawan').select('id, is_approved').eq('id', parsed.id).single();
+          
+          // Jika data tidak ada, atau akunnya di-unapprove admin
+          if (error || !data || !data.is_approved) {
+            localStorage.clear(); 
+            sessionStorage.clear();
+            setStep(1); 
+            return;
+          }
+          setKaryawan(parsed);
+          fetchDataHariIni(parsed.id);
+          setStep(2);
+        } catch (e) {
+          // Jika JSON rusak
           localStorage.clear();
           setStep(1);
-          return;
         }
-        setKaryawan(parsed);
-        fetchDataHariIni(parsed.id);
-        setStep(2);
       }
     };
     checkSesi();
+
+    // 2. Tangkap event PWA Install
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
   }, []);
 
-const fetchDataHariIni = async (userId) => {
-    // VALIDASI KEAMANAN: Cek apakah Admin telah menekan tombol Unbind (Kick Device)
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } else {
+      alert('Fitur instalasi otomatis belum siap.\n\nAndroid: Tekan ikon titik 3 di pojok atas > "Add to Home screen"\niOS/iPhone: Tekan tombol Share (panah ke atas) > "Add to Home Screen"');
+    }
+  };
+
+  const fetchDataHariIni = async (userId) => {
     const { data: cekUser } = await supabase.from('karyawan').select('device_id').eq('id', userId).single();
     const localDeviceId = localStorage.getItem('device_id');
     
+    // Jika device_id di database kosong (di-kick admin) ATAU tidak sama dengan HP ini
     if (!cekUser?.device_id || cekUser.device_id !== localDeviceId) {
       alert('Sesi Berakhir: Perangkat Anda telah di-Unbind oleh Administrator.');
-      localStorage.removeItem('karyawan_data');
-      localStorage.removeItem('device_id');
-      setKaryawan(null);
-      setStep(1); // Tendang ke layar Login
+      localStorage.clear(); sessionStorage.clear();
+      setKaryawan(null); setStep(1);
       return;
     }
 
@@ -138,17 +163,19 @@ const fetchDataHariIni = async (userId) => {
     <div className="min-h-screen bg-slate-50 flex justify-center text-slate-900 font-sans">
       <div className="w-full max-w-md flex flex-col relative bg-slate-50 shadow-2xl overflow-x-hidden">
         
-        {/* Header App - Tema Terang */}
+        {/* HEADER */}
         <div className="flex justify-between items-center p-5 bg-white border-b border-slate-200 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-teal-600 flex items-center justify-center text-white font-extrabold shadow-sm">KR</div>
+            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-extrabold shadow-sm">KR</div>
             <h1 className="font-bold text-lg text-slate-900 tracking-wide">Absensi Karyawan</h1>
           </div>
           <div className="flex gap-2">
-            <button className="px-3 py-1.5 bg-teal-50 text-teal-700 font-bold text-xs rounded-lg shadow-sm border border-teal-100 flex items-center gap-1">
+            <button onClick={handleInstallApp} className="px-3 py-1.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg shadow-sm border border-blue-100 flex items-center gap-1">
               <LayoutGrid className="w-3 h-3" /> APP
             </button>
-            <button onClick={handleLogout} className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 font-bold text-xs rounded-lg shadow-sm">Logout</button>
+            {step !== 1 && (
+              <button onClick={handleLogout} className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 font-bold text-xs rounded-lg shadow-sm">Logout</button>
+            )}
           </div>
         </div>
 
@@ -156,14 +183,14 @@ const fetchDataHariIni = async (userId) => {
         {step === 1 && (
           <div className="flex-1 flex flex-col justify-center p-6">
             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-200">
-               <Lock className="w-10 h-10 text-teal-600" />
+               <Lock className="w-10 h-10 text-blue-600" />
             </div>
             <h2 className="text-2xl font-bold text-center mb-8 text-slate-900">Login Akses</h2>
             <form onSubmit={handleLogin} className="space-y-4">
-              <div><input required type="text" placeholder="Username" value={form.username} onChange={e => setForm({...form, username: e.target.value.toLowerCase()})} className="w-full px-4 py-4 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 shadow-sm"/></div>
-              <div><input required type="password" placeholder="Password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-4 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500 shadow-sm"/></div>
+              <div><input required type="text" placeholder="Username" value={form.username} onChange={e => setForm({...form, username: e.target.value.toLowerCase()})} className="w-full px-4 py-4 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"/></div>
+              <div><input required type="password" placeholder="Password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} className="w-full px-4 py-4 bg-white border border-slate-300 rounded-2xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"/></div>
               {message && <div className="p-4 bg-rose-50 text-rose-600 text-sm rounded-xl border border-rose-200 flex gap-2"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5"/> <p>{message}</p></div>}
-              <button disabled={loading} type="submit" className="w-full bg-teal-600 text-white font-extrabold py-4 rounded-2xl hover:bg-teal-700 transition mt-6 shadow-md">{loading ? 'Memvalidasi...' : 'Masuk'}</button>
+              <button disabled={loading} type="submit" className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-2xl hover:bg-blue-700 transition mt-6 shadow-md">{loading ? 'Memvalidasi...' : 'Masuk'}</button>
             </form>
           </div>
         )}
@@ -174,11 +201,10 @@ const fetchDataHariIni = async (userId) => {
              <h2 className="text-3xl font-black text-slate-900">Absensi</h2>
              <p className="text-slate-500 text-sm mt-1 mb-8">Hi, {karyawan?.nama_lengkap}.</p>
 
-             {/* Kartu Status - Putih Bersih */}
              <div className="w-full bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-12">
                <div className="text-center mb-6">
                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Status Hari Ini</p>
-                 <p className={`font-black text-xl tracking-wide ${todayAbsen?.status === 'Hadir' ? 'text-teal-600' : todayAbsen?.status === 'Late' ? 'text-amber-500' : 'text-slate-400'}`}>
+                 <p className={`font-black text-xl tracking-wide ${todayAbsen?.status === 'Hadir' ? 'text-blue-600' : todayAbsen?.status === 'Late' ? 'text-amber-500' : 'text-slate-400'}`}>
                    {todayAbsen?.status || 'Belum Absen'}
                  </p>
                </div>
@@ -194,12 +220,9 @@ const fetchDataHariIni = async (userId) => {
                </div>
              </div>
 
-             {/* Tombol Utama 3D - Disesuaikan untuk Latar Terang */}
              <div className="relative flex items-center justify-center mb-10">
-               {/* Cincin Luar */}
-               <div className={`absolute w-[240px] h-[240px] rounded-full border ${isSelesai ? 'border-slate-200 bg-slate-100/50' : isBisaMasuk ? 'border-teal-100 bg-teal-50/50' : 'border-rose-100 bg-rose-50/50'}`}></div>
-               {/* Cincin Dalam */}
-               <div className={`absolute w-[190px] h-[190px] rounded-full border ${isSelesai ? 'border-slate-300 bg-slate-50' : isBisaMasuk ? 'border-teal-200 bg-white' : 'border-rose-200 bg-white'} shadow-sm`}></div>
+               <div className={`absolute w-[240px] h-[240px] rounded-full border ${isSelesai ? 'border-slate-200 bg-slate-100/50' : isBisaMasuk ? 'border-blue-100 bg-blue-50/50' : 'border-rose-100 bg-rose-50/50'}`}></div>
+               <div className={`absolute w-[190px] h-[190px] rounded-full border ${isSelesai ? 'border-slate-300 bg-slate-50' : isBisaMasuk ? 'border-blue-200 bg-white' : 'border-rose-200 bg-white'} shadow-sm`}></div>
                
                <button 
                   onClick={openScanner}
@@ -208,7 +231,7 @@ const fetchDataHariIni = async (userId) => {
                     isSelesai 
                     ? 'bg-slate-200 border-2 border-slate-300 text-slate-400 shadow-none' 
                     : isBisaMasuk 
-                      ? 'bg-gradient-to-br from-teal-400 to-teal-600 text-white shadow-[0_10px_20px_rgba(13,148,136,0.3)]'
+                      ? 'bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-[0_10px_20px_rgba(37,99,235,0.3)]'
                       : 'bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-[0_10px_20px_rgba(225,29,72,0.3)]'
                   }`}
                 >
@@ -216,14 +239,13 @@ const fetchDataHariIni = async (userId) => {
                 </button>
              </div>
              
-             {/* Rekap Bawah - Tema Terang */}
              <div className="w-full bg-white text-slate-900 rounded-3xl p-5 mt-auto border border-slate-200 shadow-sm">
                 <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
                    <p className="font-bold text-sm tracking-wide">Rekap Periode</p>
                    <p className="text-[10px] font-bold bg-slate-100 px-3 py-1.5 rounded-full text-slate-500">Bulan Ini</p>
                 </div>
                 <div className="grid grid-cols-4 gap-3 text-center text-xs font-bold">
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Masuk</p><p className="text-base text-teal-600">0</p></div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Masuk</p><p className="text-base text-blue-600">0</p></div>
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Izin</p><p className="text-base text-slate-700">0</p></div>
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Telat</p><p className="text-amber-500 text-base">0</p></div>
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Bolos</p><p className="text-rose-600 text-base">0</p></div>
@@ -232,7 +254,7 @@ const fetchDataHariIni = async (userId) => {
           </div>
         )}
 
-        {/* FASE 3: SCANNER - Tetap Gelap agar Kamera Terlihat Jelas */}
+        {/* FASE 3: SCANNER */}
         {step === 3 && (
           <div className="flex-1 flex flex-col bg-black">
              <div className="p-5 flex justify-between items-center bg-slate-900 border-b border-slate-800 z-10">
@@ -248,22 +270,22 @@ const fetchDataHariIni = async (userId) => {
           </div>
         )}
 
-        {/* FASE 4: STATUS ABSENSI - Tema Terang */}
+        {/* FASE 4: STATUS ABSENSI */}
         {step === 4 && (
           <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50">
-            {message.includes('BERHASIL') ? <div className="w-28 h-28 bg-teal-50 text-teal-600 rounded-full flex items-center justify-center mb-8 border border-teal-100 shadow-sm"><CheckCircle2 className="w-14 h-14" /></div> : <div className="w-28 h-28 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-8 border border-rose-100 shadow-sm"><AlertCircle className="w-14 h-14" /></div>}
-            <h2 className={`text-3xl font-black mb-3 tracking-wide ${message.includes('BERHASIL') ? 'text-teal-600' : 'text-rose-600'}`}>{message.includes('BERHASIL') ? message : 'GAGAL'}</h2>
+            {message.includes('BERHASIL') ? <div className="w-28 h-28 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-8 border border-blue-100 shadow-sm"><CheckCircle2 className="w-14 h-14" /></div> : <div className="w-28 h-28 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-8 border border-rose-100 shadow-sm"><AlertCircle className="w-14 h-14" /></div>}
+            <h2 className={`text-3xl font-black mb-3 tracking-wide ${message.includes('BERHASIL') ? 'text-blue-600' : 'text-rose-600'}`}>{message.includes('BERHASIL') ? message : 'GAGAL'}</h2>
             {!message.includes('BERHASIL') && <p className="text-slate-500 text-center font-medium">{message.replace('GAGAL: ', '')}</p>}
             <button onClick={() => { setStep(2); setMessage(''); }} className="mt-12 px-10 py-4 bg-slate-900 text-white font-extrabold rounded-full hover:bg-slate-800 transition-colors shadow-md">Kembali ke Dasbor</button>
           </div>
         )}
 
-        {/* BOTTOM NAV - Tema Terang */}
+        {/* BOTTOM NAV */}
         {step === 2 && (
           <div className="absolute bottom-0 left-0 right-0 bg-white text-slate-400 flex justify-around items-center py-4 border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-            <button className="flex flex-col items-center text-teal-600 transition-all"><LayoutGrid className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HOME</span></button>
-            <button className="flex flex-col items-center transition-all hover:text-teal-600"><Clock className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HISTORY</span></button>
-            <button className="flex flex-col items-center transition-all hover:text-teal-600"><Bell className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">NOTIF</span></button>
+            <button className="flex flex-col items-center text-blue-600 transition-all"><LayoutGrid className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HOME</span></button>
+            <button className="flex flex-col items-center transition-all hover:text-blue-600"><Clock className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HISTORY</span></button>
+            <button className="flex flex-col items-center transition-all hover:text-blue-600"><Bell className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">NOTIF</span></button>
           </div>
         )}
       </div>
