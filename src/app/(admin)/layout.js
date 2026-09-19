@@ -1,4 +1,21 @@
-<nav className="flex flex-col lg:flex-row items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shadow-sm gap-4">
+'use client';
+import { Bell, Calendar, Home, LogOut, Users, FileText, Umbrella, QrCode } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+export default function AdminLayout({ children }) {
+  const pathname = usePathname();
+
+  const getNavClass = (path) => {
+    const isActive = pathname === path;
+    return isActive
+      ? "flex items-center gap-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg border border-blue-100 font-semibold shrink-0"
+      : "flex items-center gap-2 hover:text-slate-900 transition-colors text-slate-500 font-medium px-4 py-2 shrink-0";
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      <nav className="flex flex-col lg:flex-row items-center justify-between px-6 py-4 border-b border-slate-200 bg-white shadow-sm gap-4">
         
         {/* LOGO */}
         <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
@@ -58,3 +75,10 @@
             </button>
         </div>
       </nav>
+      
+      <main className="flex-1 p-6">
+        {children}
+      </main>
+    </div>
+  );
+}

@@ -15,14 +15,25 @@ export default function MobileScannerPage() {
   const html5QrCodeRef = useRef(null);
   const [cameraMode, setCameraMode] = useState('environment');
 
-  useEffect(() => {
-    const savedKaryawan = localStorage.getItem('karyawan_data');
-    if (savedKaryawan) {
-      const parsed = JSON.parse(savedKaryawan);
-      setKaryawan(parsed);
-      fetchDataHariIni(parsed.id);
-      setStep(2);
-    }
+useEffect(() => {
+    const checkSesi = async () => {
+      const savedKaryawan = localStorage.getItem('karyawan_data');
+      if (savedKaryawan) {
+        const parsed = JSON.parse(savedKaryawan);
+        // Validasi ke Database: Apakah user ini masih ada?
+        const { data, error } = await supabase.from('karyawan').select('id').eq('id', parsed.id).single();
+        if (error || !data) {
+          // Jika sudah dihapus dari DB, bersihkan memori HP (Usir Hantu)
+          localStorage.clear();
+          setStep(1);
+          return;
+        }
+        setKaryawan(parsed);
+        fetchDataHariIni(parsed.id);
+        setStep(2);
+      }
+    };
+    checkSesi();
   }, []);
 
 const fetchDataHariIni = async (userId) => {
