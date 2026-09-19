@@ -25,7 +25,20 @@ export default function MobileScannerPage() {
     }
   }, []);
 
-  const fetchDataHariIni = async (userId) => {
+const fetchDataHariIni = async (userId) => {
+    // VALIDASI KEAMANAN: Cek apakah Admin telah menekan tombol Unbind (Kick Device)
+    const { data: cekUser } = await supabase.from('karyawan').select('device_id').eq('id', userId).single();
+    const localDeviceId = localStorage.getItem('device_id');
+    
+    if (!cekUser?.device_id || cekUser.device_id !== localDeviceId) {
+      alert('Sesi Berakhir: Perangkat Anda telah di-Unbind oleh Administrator.');
+      localStorage.removeItem('karyawan_data');
+      localStorage.removeItem('device_id');
+      setKaryawan(null);
+      setStep(1); // Tendang ke layar Login
+      return;
+    }
+
     const localDate = new Date(new Date().getTime() + (7 * 60 * 60000));
     const todayStr = localDate.toISOString().split('T')[0];
     const { data } = await supabase.from('absensi').select('*').eq('id_karyawan', userId).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).order('waktu_masuk', { ascending: false }).limit(1).single();
