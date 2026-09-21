@@ -1,28 +1,27 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock } from 'lucide-react';
+import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock, Briefcase } from 'lucide-react';
 
 export default function KaryawanPage() {
   const [karyawan, setKaryawan] = useState([]);
   const [departemen, setDepartemen] = useState([]);
-  const [tim, setTim] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Modal Tambah Karyawan
+  // Modal Karyawan
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', password: 'admin123', id_departemen: '', id_tim: '' });
+  const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', password: 'admin123', id_departemen: '' });
   const [errorsKar, setErrorsKar] = useState({});
 
   // Modal Input Manual Absen
   const [showManualModal, setShowManualModal] = useState(false);
-  const [manualForm, setManualForm] = useState({ 
-    id: null, id_karyawan: '', status: 'Masuk', 
-    jam: '07', menit: '00', keterangan: '', updated_at: null 
-  });
+  const [manualForm, setManualForm] = useState({ id: null, id_karyawan: '', status: 'Masuk', jam: '07', menit: '00', keterangan: '', updated_at: null });
   const [errorsAbsen, setErrorsAbsen] = useState({});
 
-  // Opsi Dropdown Kustom 24H
+  // Modal Departemen Sementara
+  const [showDeptModal, setShowDeptModal] = useState(false);
+  const [deptForm, setDeptForm] = useState({ nama_departemen: '', id_leader: '' });
+
   const jamMasukOpts = ['07','08','09','10','11','12'];
   const jamKeluarOpts = ['12','13','14','15','16','17','18','19','20','21','22'];
   const menitOpts = Array.from({length: 60}, (_, i) => String(i).padStart(2, '0'));
@@ -31,11 +30,35 @@ export default function KaryawanPage() {
 
   const fetchData = async () => {
     const { data: deptData } = await supabase.from('master_departemen').select('*');
-    const { data: timData } = await supabase.from('master_tim').select('*');
-    const { data: karData } = await supabase.from('karyawan').select('*, master_departemen(nama_departemen), master_tim(nama_tim)').order('created_at', { ascending: false });
-    setDepartemen(deptData || []); setTim(timData || []); setKaryawan(karData || []);
+    const { data: karData } = await supabase.from('karyawan').select('*').order('created_at', { ascending: false });
+    setDepartemen(deptData || []); setKaryawan(karData || []);
   };
 
+  // LOGIKA DEPARTEMEN & TEAM LEADER
+  const handleSimpanDept = async (e) => {
+    e.preventDefault(); setLoading(true);
+    const payload = { nama_departemen: deptForm.nama_departemen, id_leader: deptForm.id_leader || null };
+    const { error } = await supabase.from('master_departemen').insert([payload]);
+    if (error) alert('Gagal: ' + error.message);
+    else { setDeptForm({ nama_departemen: '', id_leader: '' }); fetchData(); }
+    setLoading(false);
+  };
+
+  const hapusDept = async (id) => {
+    if (!confirm('Hapus departemen ini?')) return;
+    await supabase.from('master_departemen').delete().eq('id', id);
+    fetchData();
+  };
+
+  const getDeptText = (id_dept) => {
+    if (!id_dept) return 'Belum Ada Departemen';
+    const dept = departemen.find(d => d.id === id_dept);
+    if (!dept) return 'Belum Ada Departemen';
+    const leader = karyawan.find(k => k.id === dept.id_leader);
+    return leader ? `${dept.nama_departemen} (Team ${leader.nama_lengkap})` : dept.nama_departemen;
+  };
+
+  // LOGIKA KARYAWAN
   const aksiApprove = async (id) => {
     if (!confirm('Setujui akun ini?')) return;
     await supabase.from('karyawan').update({ is_approved: true }).eq('id', id);
@@ -57,68 +80,49 @@ export default function KaryawanPage() {
 
   const handleSimpanKaryawan = async (e) => {
     e.preventDefault(); 
-    
     let errs = {};
     if (!form.nip) errs.nip = "* NIP wajib diisi";
     if (!form.username) errs.username = "* Username wajib diisi";
     if (!form.nama_lengkap) errs.nama_lengkap = "* Nama Lengkap wajib diisi";
+    if (!form.id_departemen) errs.id_departemen = "* Departemen wajib dipilih"; // Validasi Wajib
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
 
     setLoading(true);
     const payload = { ...form, role: 'Karyawan', is_approved: true }; 
-    if(!payload.id_departemen) payload.id_departemen = null;
-    if(!payload.id_tim) payload.id_tim = null;
-
     const { error } = await supabase.from('karyawan').insert([payload]);
     if (error) alert('Gagal: ' + error.message);
     else { setShowModal(false); fetchData(); }
     setLoading(false);
   };
 
+  // LOGIKA ABSEN MANUAL
   const bukaInputManual = async (id) => {
     setLoading(true); setErrorsAbsen({});
     const now = new Date(new Date().getTime() + (7 * 60 * 60000));
     const todayStr = now.toISOString().split('T')[0];
     
     const { data } = await supabase.from('absensi').select('*')
-      .eq('id_karyawan', id)
-      .gte('waktu_masuk', `${todayStr}T00:00:00+07:00`)
-      .lte('waktu_masuk', `${todayStr}T23:59:59+07:00`)
-      .single();
+      .eq('id_karyawan', id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).lte('waktu_masuk', `${todayStr}T23:59:59+07:00`).single();
 
     if (data) {
-       // Cek Kondisi Data Hari Ini
        const sudahMasuk = !!data.waktu_masuk;
        const sudahKeluar = !!data.waktu_keluar;
        const isIzinCuti = ['Izin', 'Cuti'].includes(data.status);
+       let setStatus = 'Masuk'; let setJam = '07'; let setMenit = '00';
 
-       let setStatus = 'Masuk';
-       let setJam = '07'; let setMenit = '00';
-
-       if (isIzinCuti) {
-           setStatus = data.status;
-       } else if (sudahMasuk && !sudahKeluar) {
-           // Jika sudah masuk tapi belum keluar, arahkan langsung ke mode Keluar
-           setStatus = 'Keluar';
-           setJam = '17';
-       } else if (sudahMasuk) {
+       if (isIzinCuti) { setStatus = data.status; } 
+       else if (sudahMasuk && !sudahKeluar) { setStatus = 'Keluar'; setJam = '17'; } 
+       else if (sudahMasuk) {
            setStatus = 'Masuk';
            const d = new Date(data.waktu_masuk);
            setJam = String(d.getHours()).padStart(2, '0');
            setMenit = String(d.getMinutes()).padStart(2, '0');
        }
-
-       setManualForm({
-         id: data.id, id_karyawan: id, status: setStatus,
-         jam: setJam, menit: setMenit,
-         keterangan: data.keterangan || '',
-         updated_at: data.updated_at || data.created_at
-       });
+       setManualForm({ id: data.id, id_karyawan: id, status: setStatus, jam: setJam, menit: setMenit, keterangan: data.keterangan || '', updated_at: data.updated_at || data.created_at });
     } else {
        setManualForm({ id: null, id_karyawan: id, status: 'Masuk', jam: '07', menit: '00', keterangan: '', updated_at: null });
     }
-    setShowManualModal(true);
-    setLoading(false);
+    setShowManualModal(true); setLoading(false);
   };
 
   const handleChangeStatus = (val) => {
@@ -131,7 +135,6 @@ export default function KaryawanPage() {
 
   const simpanManual = async (e) => {
     e.preventDefault(); 
-    
     let errs = {};
     if (['Izin', 'Cuti'].includes(manualForm.status) && !manualForm.keterangan) errs.keterangan = "* Keterangan wajib diisi";
     if (Object.keys(errs).length > 0) { setErrorsAbsen(errs); return; }
@@ -139,28 +142,16 @@ export default function KaryawanPage() {
     setLoading(true);
     const now = new Date(new Date().getTime() + (7 * 60 * 60000));
     const todayStr = now.toISOString().split('T')[0];
-    
-    const payload = { 
-      id_karyawan: manualForm.id_karyawan, 
-      keterangan: ['Izin', 'Cuti'].includes(manualForm.status) ? manualForm.keterangan : null,
-      updated_at: new Date().toISOString() 
-    };
+    const payload = { id_karyawan: manualForm.id_karyawan, keterangan: ['Izin', 'Cuti'].includes(manualForm.status) ? manualForm.keterangan : null, updated_at: new Date().toISOString() };
     
     if (manualForm.status === 'Masuk') {
-       // Kalkulasi Keterlambatan Otomatis (Lewat 08:00 = Late)
        const isLate = parseInt(manualForm.jam) >= 8 && (parseInt(manualForm.jam) > 8 || parseInt(manualForm.menit) > 0);
        payload.status = isLate ? 'Late' : 'Hadir';
        payload.waktu_masuk = `${todayStr}T${manualForm.jam}:${manualForm.menit}:00+07:00`;
-    } 
-    else if (manualForm.status === 'Keluar') {
+    } else if (manualForm.status === 'Keluar') {
        payload.waktu_keluar = `${todayStr}T${manualForm.jam}:${manualForm.menit}:00+07:00`;
-       // Jika ID kosong (absen keluar tanpa masuk), paksakan status Hadir agar DB tidak error
-       if (!manualForm.id) {
-           payload.status = 'Hadir';
-           payload.waktu_masuk = null;
-       }
-    } 
-    else {
+       if (!manualForm.id) { payload.status = 'Hadir'; payload.waktu_masuk = null; }
+    } else {
        payload.status = manualForm.status;
        payload.waktu_masuk = `${todayStr}T08:00:00+07:00`; 
        payload.waktu_keluar = `${todayStr}T17:00:00+07:00`;
@@ -174,7 +165,6 @@ export default function KaryawanPage() {
       const { error: err } = await supabase.from('absensi').insert([payload]);
       error = err;
     }
-
     if (error) alert('Gagal: ' + error.message);
     else { alert('Data berhasil disimpan.'); setShowManualModal(false); fetchData(); }
     setLoading(false);
@@ -187,11 +177,17 @@ export default function KaryawanPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Data Karyawan & Akses</h1>
-          <p className="text-slate-500 text-sm mt-1">Manajemen akun, persetujuan pendaftar, dan reset sesi perangkat.</p>
+          <p className="text-slate-500 text-sm mt-1">Manajemen akun, divisi, dan kontrol perangkat genggam.</p>
         </div>
-        <button onClick={() => {setForm({nip:'',nama_lengkap:'',username:'',password:'admin123',id_departemen:'',id_tim:''}); setErrorsKar({}); setShowModal(true);}} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> Tambah Manual
-        </button>
+        <div className="flex gap-2">
+          {/* TOMBOL KELOLA DEPARTEMEN */}
+          <button onClick={() => setShowDeptModal(true)} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors border border-slate-300 shadow-sm">
+            <Briefcase className="w-4 h-4" /> Kelola Departemen
+          </button>
+          <button onClick={() => {setForm({nip:'',nama_lengkap:'',username:'',password:'admin123',id_departemen:''}); setErrorsKar({}); setShowModal(true);}} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> Tambah Manual
+          </button>
+        </div>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -210,6 +206,10 @@ export default function KaryawanPage() {
                   <td className="px-6 py-4">
                     <p className="font-bold text-slate-900">{kar.nama_lengkap}</p>
                     <p className="text-xs font-mono text-slate-500 mt-0.5">{kar.nip} | Username: {kar.username}</p>
+                    {/* LABEL DEPARTEMEN DAN LEADER */}
+                    <span className="inline-block mt-2 px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded border border-slate-200 tracking-wide">
+                       {getDeptText(kar.id_departemen)}
+                    </span>
                   </td>
                   <td className="px-6 py-4">
                     {!kar.is_approved ? (
@@ -224,14 +224,10 @@ export default function KaryawanPage() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      {!kar.is_approved && (
-                         <button onClick={() => aksiApprove(kar.id)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui Akun"><Check className="w-4 h-4"/></button>
-                      )}
+                      {!kar.is_approved && (<button onClick={() => aksiApprove(kar.id)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui Akun"><Check className="w-4 h-4"/></button>)}
                       <button onClick={() => bukaInputManual(kar.id)} className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 rounded-lg" title="Input Absen Manual"><Clock className="w-4 h-4"/></button>
                       <button onClick={() => aksiResetSandi(kar.id)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Reset Sandi ke admin123"><KeyRound className="w-4 h-4"/></button>
-                      {kar.device_id && (
-                         <button onClick={() => aksiKick(kar.id)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Kick / Unbind Perangkat"><Trash2 className="w-4 h-4"/></button>
-                      )}
+                      {kar.device_id && (<button onClick={() => aksiKick(kar.id)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Kick / Unbind Perangkat"><Trash2 className="w-4 h-4"/></button>)}
                     </div>
                   </td>
                 </tr>
@@ -240,6 +236,53 @@ export default function KaryawanPage() {
           </table>
         </div>
       </div>
+
+      {/* MODAL KELOLA DEPARTEMEN */}
+      {showDeptModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white">
+              <h2 className="text-lg font-bold text-slate-900">Kelola Departemen</h2>
+              <button onClick={() => setShowDeptModal(false)} className="text-slate-400 hover:text-rose-500"><X className="w-5 h-5" /></button>
+            </div>
+            
+            <form onSubmit={handleSimpanDept} className="p-6 bg-slate-50 border-b border-slate-200">
+               <div className="space-y-4">
+                 <div>
+                   <label className="text-sm font-semibold text-slate-700">Nama Departemen</label>
+                   <input required type="text" value={deptForm.nama_departemen} onChange={e => setDeptForm({...deptForm, nama_departemen: e.target.value})} className={getStyleInput(false)} placeholder="Contoh: Marketing"/>
+                 </div>
+                 <div>
+                   <label className="text-sm font-semibold text-slate-700">Pilih Team Leader (Opsional)</label>
+                   <select value={deptForm.id_leader} onChange={e => setDeptForm({...deptForm, id_leader: e.target.value})} className={getStyleInput(false)}>
+                     <option value="">-- Tanpa Leader --</option>
+                     {karyawan.filter(k => k.is_approved).map(k => <option key={k.id} value={k.id}>{k.nama_lengkap}</option>)}
+                   </select>
+                 </div>
+                 <button type="submit" disabled={loading} className="w-full py-2 text-white font-medium bg-slate-800 hover:bg-slate-900 rounded-lg shadow-sm transition-colors">Tambah Departemen</button>
+               </div>
+            </form>
+
+            <div className="p-6 max-h-60 overflow-y-auto">
+               <p className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-widest">Daftar Departemen</p>
+               <ul className="space-y-2">
+                 {departemen.length === 0 ? <li className="text-sm text-slate-500 italic">Belum ada data.</li> : departemen.map(d => {
+                   const leader = karyawan.find(k => k.id === d.id_leader);
+                   return (
+                     <li key={d.id} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-lg">
+                       <div>
+                         <p className="font-bold text-slate-800 text-sm">{d.nama_departemen}</p>
+                         <p className="text-xs text-slate-500">Leader: {leader ? leader.nama_lengkap : '-'}</p>
+                       </div>
+                       <button onClick={() => hapusDept(d.id)} className="text-rose-500 bg-rose-50 p-2 rounded-lg hover:bg-rose-100"><Trash2 className="w-4 h-4"/></button>
+                     </li>
+                   )
+                 })}
+               </ul>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MODAL TAMBAH KARYAWAN MANUAL */}
       {showModal && (
@@ -267,6 +310,17 @@ export default function KaryawanPage() {
                 <input type="text" value={form.nama_lengkap} onChange={e => {setForm({...form, nama_lengkap: e.target.value}); setErrorsKar({...errorsKar, nama_lengkap: null});}} className={getStyleInput(errorsKar.nama_lengkap)}/>
                 {errorsKar.nama_lengkap && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.nama_lengkap}</p>}
               </div>
+              
+              {/* INPUT DEPARTEMEN WAJIB */}
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
+                <select value={form.id_departemen} onChange={e => {setForm({...form, id_departemen: e.target.value}); setErrorsKar({...errorsKar, id_departemen: null});}} className={getStyleInput(errorsKar.id_departemen)}>
+                  <option value="">-- Pilih Departemen --</option>
+                  {departemen.map(d => <option key={d.id} value={d.id}>{d.nama_departemen}</option>)}
+                </select>
+                {errorsKar.id_departemen && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.id_departemen}</p>}
+              </div>
+
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 mt-6 pt-6">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
                 <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Proses...' : 'Simpan'}</button>
@@ -302,18 +356,12 @@ export default function KaryawanPage() {
                 </select>
               </div>
 
-              {/* TAMPILAN WAKTU KHUSUS MASUK / KELUAR */}
               {['Masuk', 'Keluar'].includes(manualForm.status) ? (
                 <div>
-                  <label className="text-sm font-semibold text-slate-700 mb-1 block">
-                    Waktu {manualForm.status} <span className="text-slate-400 text-xs font-normal">(Format 24H)</span>
-                  </label>
+                  <label className="text-sm font-semibold text-slate-700 mb-1 block">Waktu {manualForm.status} <span className="text-slate-400 text-xs font-normal">(Format 24H)</span></label>
                   <div className="flex items-center gap-2">
                     <select value={manualForm.jam} onChange={(e) => setManualForm({...manualForm, jam: e.target.value})} className={getStyleInput(false)}>
-                      {manualForm.status === 'Masuk' 
-                        ? jamMasukOpts.map(j => <option key={j} value={j}>{j}</option>)
-                        : jamKeluarOpts.map(j => <option key={j} value={j}>{j}</option>)
-                      }
+                      {manualForm.status === 'Masuk' ? jamMasukOpts.map(j => <option key={j} value={j}>{j}</option>) : jamKeluarOpts.map(j => <option key={j} value={j}>{j}</option>)}
                     </select>
                     <span className="font-black text-slate-400">:</span>
                     <select value={manualForm.menit} onChange={(e) => setManualForm({...manualForm, menit: e.target.value})} className={getStyleInput(false)}>
@@ -322,10 +370,9 @@ export default function KaryawanPage() {
                   </div>
                 </div>
               ) : (
-                /* TAMPILAN KETERANGAN (IZIN / CUTI) */
                 <div>
                    <label className="text-sm font-semibold text-slate-700">Alasan / Keterangan <span className="text-rose-500">*</span></label>
-                   <textarea rows="3" placeholder="Sakit flu, acara keluarga, dll..." value={manualForm.keterangan} onChange={e => {setManualForm({...manualForm, keterangan: e.target.value}); setErrorsAbsen({...errorsAbsen, keterangan: null});}} className={getStyleInput(errorsAbsen.keterangan)}></textarea>
+                   <textarea rows="3" placeholder="Sakit flu, dll..." value={manualForm.keterangan} onChange={e => {setManualForm({...manualForm, keterangan: e.target.value}); setErrorsAbsen({...errorsAbsen, keterangan: null});}} className={getStyleInput(errorsAbsen.keterangan)}></textarea>
                    {errorsAbsen.keterangan && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsAbsen.keterangan}</p>}
                 </div>
               )}

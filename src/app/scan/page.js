@@ -123,14 +123,17 @@ export default function MobileScannerPage() {
       if (!qrData.startsWith('ABSENSI-KR-')) throw new Error('Kode QR tidak valid.');
       if ((Date.now() - parseInt(qrData.split('-')[2])) / 1000 > 60) throw new Error('Kode QR kedaluwarsa.');
 
-      const currentHour = new Date().getHours();
-      let jenisAbsen = '';
-      if (currentHour >= 7 && currentHour <= 12) jenisAbsen = 'MASUK';
-      else if (currentHour >= 12 && currentHour <= 23) jenisAbsen = 'KELUAR';
-      else throw new Error('Di luar jam operasional (07:00 - 23:59).');
+      // LOGIKA WAKTU GMT+7 MUTLAK (Membunuh Bug Zona Waktu HP)
+      const now = new Date();
+      const localTime = new Date(now.getTime() + (7 * 60 * 60000));
+      const currentHour = localTime.getUTCHours(); // Akan selalu membaca jam WIB secara akurat
 
-      const localDate = new Date(new Date().getTime() + (7 * 60 * 60000));
-      const todayStr = localDate.toISOString().split('T')[0];
+      let jenisAbsen = '';
+      if (currentHour >= 7 && currentHour < 12) jenisAbsen = 'MASUK';
+      else if (currentHour >= 12 && currentHour <= 23) jenisAbsen = 'KELUAR';
+      else throw new Error(`Di luar jam operasional (Terdeteksi jam ${currentHour}:00 WIB).`);
+
+      const todayStr = localTime.toISOString().split('T')[0];
 
       if (jenisAbsen === 'MASUK') {
         const { data: cekMasuk } = await supabase.from('absensi').select('id').eq('id_karyawan', karyawan.id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).single();
@@ -147,7 +150,7 @@ export default function MobileScannerPage() {
       fetchDataHariIni(karyawan.id); 
     } catch (error) { setMessage(`GAGAL: ${error.message}`); }
     setLoading(false);
-  };
+  };  
 
   const formatJam = (isoStr) => {
     if (!isoStr) return '-';
