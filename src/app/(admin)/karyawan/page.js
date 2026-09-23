@@ -8,9 +8,10 @@ export default function KaryawanPage() {
   const [departemen, setDepartemen] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // Modal Karyawan
+  // Modal Tambah/Edit Karyawan
   const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', password: 'admin123', id_departemen: '' });
+  const [editKarId, setEditKarId] = useState(null); // Pelacak Mode Edit
+  const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
   const [errorsKar, setErrorsKar] = useState({});
 
   // Modal Input Manual Absen
@@ -18,9 +19,9 @@ export default function KaryawanPage() {
   const [manualForm, setManualForm] = useState({ id: null, id_karyawan: '', status: 'Masuk', jam: '07', menit: '00', keterangan: '', updated_at: null });
   const [errorsAbsen, setErrorsAbsen] = useState({});
 
-  // Modal Departemen Sementara
+  // Modal Departemen
   const [showDeptModal, setShowDeptModal] = useState(false);
-  const [deptForm, setDeptForm] = useState({ id: null, nama_departemen: '', id_leader: '' }); // Tambah id untuk deteksi mode Edit
+  const [deptForm, setDeptForm] = useState({ id: null, nama_departemen: '', id_leader: '' });
 
   const jamMasukOpts = ['07','08','09','10','11','12'];
   const jamKeluarOpts = ['12','13','14','15','16','17','18','19','20','21','22'];
@@ -34,43 +35,26 @@ export default function KaryawanPage() {
     setDepartemen(deptData || []); setKaryawan(karData || []);
   };
 
-  // LOGIKA DEPARTEMEN & TEAM LEADER
+  // =================== LOGIKA DEPARTEMEN ===================
   const handleSimpanDept = async (e) => {
     e.preventDefault(); setLoading(true);
     const payload = { nama_departemen: deptForm.nama_departemen, id_leader: deptForm.id_leader || null };
     
     let error;
     if (deptForm.id) {
-       // Mode Edit
-       const { error: err } = await supabase.from('master_departemen').update(payload).eq('id', deptForm.id);
-       error = err;
+       const { error: err } = await supabase.from('master_departemen').update(payload).eq('id', deptForm.id); error = err;
     } else {
-       // Mode Tambah Baru
-       const { error: err } = await supabase.from('master_departemen').insert([payload]);
-       error = err;
+       const { error: err } = await supabase.from('master_departemen').insert([payload]); error = err;
     }
 
-    if (error) alert('Gagal Simpan Departemen: ' + error.message);
-    else { 
-       setDeptForm({ id: null, nama_departemen: '', id_leader: '' }); // Reset ke mode Tambah
-       fetchData(); 
-    }
+    if (error) alert('Gagal Simpan: ' + error.message);
+    else { setDeptForm({ id: null, nama_departemen: '', id_leader: '' }); fetchData(); }
     setLoading(false);
-  };
-
-  const editDept = (dept) => {
-    // Melempar data departemen terpilih ke atas form
-    setDeptForm({ id: dept.id, nama_departemen: dept.nama_departemen, id_leader: dept.id_leader || '' });
-  };
-
-  const batalEditDept = () => {
-    setDeptForm({ id: null, nama_departemen: '', id_leader: '' });
   };
 
   const hapusDept = async (id) => {
     if (!confirm('Hapus departemen ini?')) return;
-    await supabase.from('master_departemen').delete().eq('id', id);
-    fetchData();
+    await supabase.from('master_departemen').delete().eq('id', id); fetchData();
   };
 
   const getDeptText = (id_dept) => {
@@ -81,24 +65,38 @@ export default function KaryawanPage() {
     return leader ? `${dept.nama_departemen} (Team ${leader.nama_lengkap})` : dept.nama_departemen;
   };
 
-  // LOGIKA KARYAWAN
+  // =================== LOGIKA KARYAWAN ===================
+  const bukaTambahKaryawan = () => {
+    setEditKarId(null);
+    setForm({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
+    setErrorsKar({}); setShowModal(true);
+  };
+
+  const bukaEditKaryawan = (kar) => {
+    setEditKarId(kar.id);
+    setForm({ 
+      nip: kar.nip, 
+      nama_lengkap: kar.nama_lengkap, 
+      username: kar.username, 
+      id_departemen: kar.id_departemen || '' 
+    });
+    setErrorsKar({}); setShowModal(true);
+  };
+
   const aksiApprove = async (id) => {
     if (!confirm('Setujui akun ini?')) return;
-    await supabase.from('karyawan').update({ is_approved: true }).eq('id', id);
-    fetchData();
+    await supabase.from('karyawan').update({ is_approved: true }).eq('id', id); fetchData();
   };
 
   const aksiKick = async (id) => {
     if (!confirm('Tendang perangkat ini agar karyawan bisa login di HP baru?')) return;
-    await supabase.from('karyawan').update({ device_id: null }).eq('id', id);
-    fetchData();
+    await supabase.from('karyawan').update({ device_id: null }).eq('id', id); fetchData();
   };
 
   const aksiResetSandi = async (id) => {
     if (!confirm('Reset sandi karyawan ini menjadi admin123?')) return;
     await supabase.from('karyawan').update({ password: 'admin123' }).eq('id', id);
-    alert('Sandi berhasil direset menjadi: admin123');
-    fetchData();
+    alert('Sandi berhasil direset menjadi: admin123'); fetchData();
   };
 
   const handleSimpanKaryawan = async (e) => {
@@ -111,49 +109,53 @@ export default function KaryawanPage() {
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
 
     setLoading(true);
-    const payload = { ...form, role: 'Karyawan', is_approved: true }; 
-    const { error } = await supabase.from('karyawan').insert([payload]);
+    const payload = { 
+      nip: form.nip, 
+      nama_lengkap: form.nama_lengkap, 
+      username: form.username, 
+      id_departemen: form.id_departemen || null 
+    }; 
+    
+    let error;
+    if (editKarId) {
+      // Mode Edit: Password, Role, dan Approval TIDAK boleh diganggu gugat
+      const { error: err } = await supabase.from('karyawan').update(payload).eq('id', editKarId); error = err;
+    } else {
+      // Mode Tambah Baru: Set Default Value
+      payload.password = 'admin123';
+      payload.role = 'Karyawan';
+      payload.is_approved = true;
+      const { error: err } = await supabase.from('karyawan').insert([payload]); error = err;
+    }
+
     if (error) alert('Gagal: ' + error.message);
     else { setShowModal(false); fetchData(); }
     setLoading(false);
   };
 
-  // LOGIKA ABSEN MANUAL
+  // =================== LOGIKA ABSEN MANUAL ===================
   const bukaInputManual = async (id) => {
     setLoading(true); setErrorsAbsen({});
     const now = new Date(new Date().getTime() + (7 * 60 * 60000));
     const todayStr = now.toISOString().split('T')[0];
     
-    const { data } = await supabase.from('absensi').select('*')
-      .eq('id_karyawan', id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).lte('waktu_masuk', `${todayStr}T23:59:59+07:00`).single();
+    const { data } = await supabase.from('absensi').select('*').eq('id_karyawan', id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).lte('waktu_masuk', `${todayStr}T23:59:59+07:00`).single();
 
     if (data) {
-       const sudahMasuk = !!data.waktu_masuk;
-       const sudahKeluar = !!data.waktu_keluar;
-       const isIzinCuti = ['Izin', 'Cuti'].includes(data.status);
+       const sudahMasuk = !!data.waktu_masuk; const sudahKeluar = !!data.waktu_keluar; const isIzinCuti = ['Izin', 'Cuti'].includes(data.status);
        let setStatus = 'Masuk'; let setJam = '07'; let setMenit = '00';
 
        if (isIzinCuti) { setStatus = data.status; } 
        else if (sudahMasuk && !sudahKeluar) { setStatus = 'Keluar'; setJam = '17'; } 
        else if (sudahMasuk) {
-           setStatus = 'Masuk';
-           const d = new Date(data.waktu_masuk);
-           setJam = String(d.getHours()).padStart(2, '0');
-           setMenit = String(d.getMinutes()).padStart(2, '0');
+           setStatus = 'Masuk'; const d = new Date(data.waktu_masuk);
+           setJam = String(d.getHours()).padStart(2, '0'); setMenit = String(d.getMinutes()).padStart(2, '0');
        }
        setManualForm({ id: data.id, id_karyawan: id, status: setStatus, jam: setJam, menit: setMenit, keterangan: data.keterangan || '', updated_at: data.updated_at || data.created_at });
     } else {
        setManualForm({ id: null, id_karyawan: id, status: 'Masuk', jam: '07', menit: '00', keterangan: '', updated_at: null });
     }
     setShowManualModal(true); setLoading(false);
-  };
-
-  const handleChangeStatus = (val) => {
-    let newJam = manualForm.jam;
-    if (val === 'Masuk' && !jamMasukOpts.includes(newJam)) newJam = '07';
-    if (val === 'Keluar' && !jamKeluarOpts.includes(newJam)) newJam = '17';
-    setManualForm({ ...manualForm, status: val, jam: newJam });
-    setErrorsAbsen({});
   };
 
   const simpanManual = async (e) => {
@@ -175,19 +177,12 @@ export default function KaryawanPage() {
        payload.waktu_keluar = `${todayStr}T${manualForm.jam}:${manualForm.menit}:00+07:00`;
        if (!manualForm.id) { payload.status = 'Hadir'; payload.waktu_masuk = null; }
     } else {
-       payload.status = manualForm.status;
-       payload.waktu_masuk = `${todayStr}T08:00:00+07:00`; 
-       payload.waktu_keluar = `${todayStr}T17:00:00+07:00`;
+       payload.status = manualForm.status; payload.waktu_masuk = `${todayStr}T08:00:00+07:00`; payload.waktu_keluar = `${todayStr}T17:00:00+07:00`;
     }
 
     let error;
-    if (manualForm.id) {
-      const { error: err } = await supabase.from('absensi').update(payload).eq('id', manualForm.id);
-      error = err;
-    } else {
-      const { error: err } = await supabase.from('absensi').insert([payload]);
-      error = err;
-    }
+    if (manualForm.id) { const { error: err } = await supabase.from('absensi').update(payload).eq('id', manualForm.id); error = err; } 
+    else { const { error: err } = await supabase.from('absensi').insert([payload]); error = err; }
     if (error) alert('Gagal: ' + error.message);
     else { alert('Data berhasil disimpan.'); setShowManualModal(false); fetchData(); }
     setLoading(false);
@@ -203,11 +198,10 @@ export default function KaryawanPage() {
           <p className="text-slate-500 text-sm mt-1">Manajemen akun, divisi, dan kontrol perangkat genggam.</p>
         </div>
         <div className="flex gap-2">
-          {/* TOMBOL KELOLA DEPARTEMEN */}
           <button onClick={() => {setDeptForm({id: null, nama_departemen: '', id_leader: ''}); setShowDeptModal(true);}} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors border border-slate-300 shadow-sm">
             <Briefcase className="w-4 h-4" /> Kelola Departemen
           </button>
-          <button onClick={() => {setForm({nip:'',nama_lengkap:'',username:'',password:'admin123',id_departemen:''}); setErrorsKar({}); setShowModal(true);}} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
+          <button onClick={bukaTambahKaryawan} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
             <Plus className="w-4 h-4" /> Tambah Manual
           </button>
         </div>
@@ -247,6 +241,10 @@ export default function KaryawanPage() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2">
                       {!kar.is_approved && (<button onClick={() => aksiApprove(kar.id)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui Akun"><Check className="w-4 h-4"/></button>)}
+                      
+                      {/* TOMBOL EDIT KARYAWAN KEMBALI */}
+                      <button onClick={() => bukaEditKaryawan(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Edit Data Karyawan"><Edit2 className="w-4 h-4"/></button>
+                      
                       <button onClick={() => bukaInputManual(kar.id)} className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 rounded-lg" title="Input Absen Manual"><Clock className="w-4 h-4"/></button>
                       <button onClick={() => aksiResetSandi(kar.id)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Reset Sandi ke admin123"><KeyRound className="w-4 h-4"/></button>
                       {kar.device_id && (<button onClick={() => aksiKick(kar.id)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Kick / Unbind Perangkat"><Trash2 className="w-4 h-4"/></button>)}
@@ -259,7 +257,7 @@ export default function KaryawanPage() {
         </div>
       </div>
 
-      {/* MODAL KELOLA DEPARTEMEN */}
+      {/* MODAL DEPARTEMEN */}
       {showDeptModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
@@ -283,7 +281,7 @@ export default function KaryawanPage() {
                  </div>
                  <div className="flex gap-2">
                     {deptForm.id && (
-                       <button type="button" onClick={batalEditDept} className="w-1/3 py-2 text-slate-600 font-medium bg-white hover:bg-slate-100 rounded-lg shadow-sm border border-slate-200 transition-colors">Batal</button>
+                       <button type="button" onClick={() => setDeptForm({ id: null, nama_departemen: '', id_leader: '' })} className="w-1/3 py-2 text-slate-600 font-medium bg-white hover:bg-slate-100 rounded-lg shadow-sm border border-slate-200 transition-colors">Batal</button>
                     )}
                     <button type="submit" disabled={loading} className={`${deptForm.id ? 'w-2/3 bg-indigo-600 hover:bg-indigo-700' : 'w-full bg-slate-800 hover:bg-slate-900'} py-2 text-white font-medium rounded-lg shadow-sm transition-colors`}>
                        {deptForm.id ? 'Simpan Perubahan' : 'Tambah Departemen'}
@@ -304,8 +302,8 @@ export default function KaryawanPage() {
                          <p className="text-xs text-slate-500">Leader: {leader ? leader.nama_lengkap : '-'}</p>
                        </div>
                        <div className="flex gap-1">
-                         <button onClick={() => editDept(d)} className="text-slate-500 bg-slate-50 p-2 rounded-lg hover:bg-slate-100 hover:text-indigo-600" title="Edit"><Edit2 className="w-4 h-4"/></button>
-                         <button onClick={() => hapusDept(d.id)} className="text-rose-500 bg-rose-50 p-2 rounded-lg hover:bg-rose-100" title="Hapus"><Trash2 className="w-4 h-4"/></button>
+                         <button onClick={() => setDeptForm({ id: d.id, nama_departemen: d.nama_departemen, id_leader: d.id_leader || '' })} className="text-slate-500 bg-slate-50 p-2 rounded-lg hover:bg-slate-100 hover:text-indigo-600"><Edit2 className="w-4 h-4"/></button>
+                         <button onClick={() => hapusDept(d.id)} className="text-rose-500 bg-rose-50 p-2 rounded-lg hover:bg-rose-100"><Trash2 className="w-4 h-4"/></button>
                        </div>
                      </li>
                    )
@@ -316,12 +314,12 @@ export default function KaryawanPage() {
         </div>
       )}
 
-      {/* MODAL TAMBAH KARYAWAN MANUAL */}
+      {/* MODAL TAMBAH/EDIT KARYAWAN MANUAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white">
-              <h2 className="text-lg font-bold text-slate-900">Tambah Karyawan Manual</h2>
+              <h2 className="text-lg font-bold text-slate-900">{editKarId ? 'Edit Karyawan' : 'Tambah Karyawan Manual'}</h2>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-rose-500"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleSimpanKaryawan} className="p-6 space-y-4">
@@ -344,6 +342,7 @@ export default function KaryawanPage() {
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
+                {/* MENU DROPDOWN DEPARTEMEN */}
                 <select value={form.id_departemen} onChange={e => {setForm({...form, id_departemen: e.target.value}); setErrorsKar({...errorsKar, id_departemen: null});}} className={getStyleInput(errorsKar.id_departemen)}>
                   <option value="">-- Pilih Departemen --</option>
                   {departemen.map(d => <option key={d.id} value={d.id}>{d.nama_departemen}</option>)}
@@ -360,7 +359,7 @@ export default function KaryawanPage() {
         </div>
       )}
 
-      {/* MODAL INPUT ABSEN MANUAL (HARI INI) */}
+      {/* MODAL INPUT ABSEN MANUAL */}
       {showManualModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
@@ -378,7 +377,13 @@ export default function KaryawanPage() {
 
               <div>
                 <label className="text-sm font-semibold text-slate-700">Pilih Status <span className="text-rose-500">*</span></label>
-                <select value={manualForm.status} onChange={e => handleChangeStatus(e.target.value)} className={getStyleInput(false)}>
+                <select value={manualForm.status} onChange={e => {
+                  let newJam = manualForm.jam;
+                  if (e.target.value === 'Masuk' && !jamMasukOpts.includes(newJam)) newJam = '07';
+                  if (e.target.value === 'Keluar' && !jamKeluarOpts.includes(newJam)) newJam = '17';
+                  setManualForm({...manualForm, status: e.target.value, jam: newJam}); 
+                  setErrorsAbsen({});
+                }} className={getStyleInput(false)}>
                   <option value="Masuk">Absen Masuk (07:00 - 12:00)</option>
                   <option value="Keluar">Absen Keluar (12:00 - 22:00)</option>
                   <option value="Izin">Izin (Sakit / Kepentingan)</option>
