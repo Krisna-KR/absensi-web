@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock, Briefcase } from 'lucide-react';
+import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock, Briefcase, Edit2 } from 'lucide-react';
 
 export default function KaryawanPage() {
   const [karyawan, setKaryawan] = useState([]);
@@ -20,7 +20,7 @@ export default function KaryawanPage() {
 
   // Modal Departemen Sementara
   const [showDeptModal, setShowDeptModal] = useState(false);
-  const [deptForm, setDeptForm] = useState({ nama_departemen: '', id_leader: '' });
+  const [deptForm, setDeptForm] = useState({ id: null, nama_departemen: '', id_leader: '' }); // Tambah id untuk deteksi mode Edit
 
   const jamMasukOpts = ['07','08','09','10','11','12'];
   const jamKeluarOpts = ['12','13','14','15','16','17','18','19','20','21','22'];
@@ -38,10 +38,33 @@ export default function KaryawanPage() {
   const handleSimpanDept = async (e) => {
     e.preventDefault(); setLoading(true);
     const payload = { nama_departemen: deptForm.nama_departemen, id_leader: deptForm.id_leader || null };
-    const { error } = await supabase.from('master_departemen').insert([payload]);
-    if (error) alert('Gagal: ' + error.message);
-    else { setDeptForm({ nama_departemen: '', id_leader: '' }); fetchData(); }
+    
+    let error;
+    if (deptForm.id) {
+       // Mode Edit
+       const { error: err } = await supabase.from('master_departemen').update(payload).eq('id', deptForm.id);
+       error = err;
+    } else {
+       // Mode Tambah Baru
+       const { error: err } = await supabase.from('master_departemen').insert([payload]);
+       error = err;
+    }
+
+    if (error) alert('Gagal Simpan Departemen: ' + error.message);
+    else { 
+       setDeptForm({ id: null, nama_departemen: '', id_leader: '' }); // Reset ke mode Tambah
+       fetchData(); 
+    }
     setLoading(false);
+  };
+
+  const editDept = (dept) => {
+    // Melempar data departemen terpilih ke atas form
+    setDeptForm({ id: dept.id, nama_departemen: dept.nama_departemen, id_leader: dept.id_leader || '' });
+  };
+
+  const batalEditDept = () => {
+    setDeptForm({ id: null, nama_departemen: '', id_leader: '' });
   };
 
   const hapusDept = async (id) => {
@@ -84,7 +107,7 @@ export default function KaryawanPage() {
     if (!form.nip) errs.nip = "* NIP wajib diisi";
     if (!form.username) errs.username = "* Username wajib diisi";
     if (!form.nama_lengkap) errs.nama_lengkap = "* Nama Lengkap wajib diisi";
-    if (!form.id_departemen) errs.id_departemen = "* Departemen wajib dipilih"; // Validasi Wajib
+    if (!form.id_departemen) errs.id_departemen = "* Departemen wajib dipilih"; 
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
 
     setLoading(true);
@@ -181,7 +204,7 @@ export default function KaryawanPage() {
         </div>
         <div className="flex gap-2">
           {/* TOMBOL KELOLA DEPARTEMEN */}
-          <button onClick={() => setShowDeptModal(true)} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors border border-slate-300 shadow-sm">
+          <button onClick={() => {setDeptForm({id: null, nama_departemen: '', id_leader: ''}); setShowDeptModal(true);}} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors border border-slate-300 shadow-sm">
             <Briefcase className="w-4 h-4" /> Kelola Departemen
           </button>
           <button onClick={() => {setForm({nip:'',nama_lengkap:'',username:'',password:'admin123',id_departemen:''}); setErrorsKar({}); setShowModal(true);}} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
@@ -206,7 +229,6 @@ export default function KaryawanPage() {
                   <td className="px-6 py-4">
                     <p className="font-bold text-slate-900">{kar.nama_lengkap}</p>
                     <p className="text-xs font-mono text-slate-500 mt-0.5">{kar.nip} | Username: {kar.username}</p>
-                    {/* LABEL DEPARTEMEN DAN LEADER */}
                     <span className="inline-block mt-2 px-2.5 py-1 bg-slate-100 text-slate-600 text-[10px] font-bold rounded border border-slate-200 tracking-wide">
                        {getDeptText(kar.id_departemen)}
                     </span>
@@ -246,7 +268,7 @@ export default function KaryawanPage() {
               <button onClick={() => setShowDeptModal(false)} className="text-slate-400 hover:text-rose-500"><X className="w-5 h-5" /></button>
             </div>
             
-            <form onSubmit={handleSimpanDept} className="p-6 bg-slate-50 border-b border-slate-200">
+            <form onSubmit={handleSimpanDept} className={`p-6 border-b border-slate-200 ${deptForm.id ? 'bg-indigo-50/50' : 'bg-slate-50'}`}>
                <div className="space-y-4">
                  <div>
                    <label className="text-sm font-semibold text-slate-700">Nama Departemen</label>
@@ -259,22 +281,32 @@ export default function KaryawanPage() {
                      {karyawan.filter(k => k.is_approved).map(k => <option key={k.id} value={k.id}>{k.nama_lengkap}</option>)}
                    </select>
                  </div>
-                 <button type="submit" disabled={loading} className="w-full py-2 text-white font-medium bg-slate-800 hover:bg-slate-900 rounded-lg shadow-sm transition-colors">Tambah Departemen</button>
+                 <div className="flex gap-2">
+                    {deptForm.id && (
+                       <button type="button" onClick={batalEditDept} className="w-1/3 py-2 text-slate-600 font-medium bg-white hover:bg-slate-100 rounded-lg shadow-sm border border-slate-200 transition-colors">Batal</button>
+                    )}
+                    <button type="submit" disabled={loading} className={`${deptForm.id ? 'w-2/3 bg-indigo-600 hover:bg-indigo-700' : 'w-full bg-slate-800 hover:bg-slate-900'} py-2 text-white font-medium rounded-lg shadow-sm transition-colors`}>
+                       {deptForm.id ? 'Simpan Perubahan' : 'Tambah Departemen'}
+                    </button>
+                 </div>
                </div>
             </form>
 
-            <div className="p-6 max-h-60 overflow-y-auto">
+            <div className="p-6 max-h-60 overflow-y-auto bg-white">
                <p className="text-xs font-bold text-slate-400 uppercase mb-3 tracking-widest">Daftar Departemen</p>
                <ul className="space-y-2">
                  {departemen.length === 0 ? <li className="text-sm text-slate-500 italic">Belum ada data.</li> : departemen.map(d => {
                    const leader = karyawan.find(k => k.id === d.id_leader);
                    return (
-                     <li key={d.id} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-lg">
+                     <li key={d.id} className={`flex justify-between items-center p-3 border rounded-lg transition-colors ${deptForm.id === d.id ? 'border-indigo-300 bg-indigo-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
                        <div>
                          <p className="font-bold text-slate-800 text-sm">{d.nama_departemen}</p>
                          <p className="text-xs text-slate-500">Leader: {leader ? leader.nama_lengkap : '-'}</p>
                        </div>
-                       <button onClick={() => hapusDept(d.id)} className="text-rose-500 bg-rose-50 p-2 rounded-lg hover:bg-rose-100"><Trash2 className="w-4 h-4"/></button>
+                       <div className="flex gap-1">
+                         <button onClick={() => editDept(d)} className="text-slate-500 bg-slate-50 p-2 rounded-lg hover:bg-slate-100 hover:text-indigo-600" title="Edit"><Edit2 className="w-4 h-4"/></button>
+                         <button onClick={() => hapusDept(d.id)} className="text-rose-500 bg-rose-50 p-2 rounded-lg hover:bg-rose-100" title="Hapus"><Trash2 className="w-4 h-4"/></button>
+                       </div>
                      </li>
                    )
                  })}
@@ -310,8 +342,6 @@ export default function KaryawanPage() {
                 <input type="text" value={form.nama_lengkap} onChange={e => {setForm({...form, nama_lengkap: e.target.value}); setErrorsKar({...errorsKar, nama_lengkap: null});}} className={getStyleInput(errorsKar.nama_lengkap)}/>
                 {errorsKar.nama_lengkap && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.nama_lengkap}</p>}
               </div>
-              
-              {/* INPUT DEPARTEMEN WAJIB */}
               <div>
                 <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
                 <select value={form.id_departemen} onChange={e => {setForm({...form, id_departemen: e.target.value}); setErrorsKar({...errorsKar, id_departemen: null});}} className={getStyleInput(errorsKar.id_departemen)}>
