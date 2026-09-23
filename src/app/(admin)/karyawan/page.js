@@ -10,7 +10,7 @@ export default function KaryawanPage() {
 
   // Modal Tambah/Edit Karyawan
   const [showModal, setShowModal] = useState(false);
-  const [editKarId, setEditKarId] = useState(null); // Pelacak Mode Edit
+  const [editKarId, setEditKarId] = useState(null); 
   const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
   const [errorsKar, setErrorsKar] = useState({});
 
@@ -39,14 +39,9 @@ export default function KaryawanPage() {
   const handleSimpanDept = async (e) => {
     e.preventDefault(); setLoading(true);
     const payload = { nama_departemen: deptForm.nama_departemen, id_leader: deptForm.id_leader || null };
-    
     let error;
-    if (deptForm.id) {
-       const { error: err } = await supabase.from('master_departemen').update(payload).eq('id', deptForm.id); error = err;
-    } else {
-       const { error: err } = await supabase.from('master_departemen').insert([payload]); error = err;
-    }
-
+    if (deptForm.id) { const { error: err } = await supabase.from('master_departemen').update(payload).eq('id', deptForm.id); error = err; } 
+    else { const { error: err } = await supabase.from('master_departemen').insert([payload]); error = err; }
     if (error) alert('Gagal Simpan: ' + error.message);
     else { setDeptForm({ id: null, nama_departemen: '', id_leader: '' }); fetchData(); }
     setLoading(false);
@@ -67,19 +62,13 @@ export default function KaryawanPage() {
 
   // =================== LOGIKA KARYAWAN ===================
   const bukaTambahKaryawan = () => {
-    setEditKarId(null);
-    setForm({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
+    setEditKarId(null); setForm({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
     setErrorsKar({}); setShowModal(true);
   };
 
   const bukaEditKaryawan = (kar) => {
     setEditKarId(kar.id);
-    setForm({ 
-      nip: kar.nip, 
-      nama_lengkap: kar.nama_lengkap, 
-      username: kar.username, 
-      id_departemen: kar.id_departemen || '' 
-    });
+    setForm({ nip: kar.nip, nama_lengkap: kar.nama_lengkap, username: kar.username, id_departemen: kar.id_departemen || '' });
     setErrorsKar({}); setShowModal(true);
   };
 
@@ -109,25 +98,14 @@ export default function KaryawanPage() {
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
 
     setLoading(true);
-    const payload = { 
-      nip: form.nip, 
-      nama_lengkap: form.nama_lengkap, 
-      username: form.username, 
-      id_departemen: form.id_departemen || null 
-    }; 
-    
+    const payload = { nip: form.nip, nama_lengkap: form.nama_lengkap, username: form.username, id_departemen: form.id_departemen || null }; 
     let error;
     if (editKarId) {
-      // Mode Edit: Password, Role, dan Approval TIDAK boleh diganggu gugat
       const { error: err } = await supabase.from('karyawan').update(payload).eq('id', editKarId); error = err;
     } else {
-      // Mode Tambah Baru: Set Default Value
-      payload.password = 'admin123';
-      payload.role = 'Karyawan';
-      payload.is_approved = true;
+      payload.password = 'admin123'; payload.role = 'Karyawan'; payload.is_approved = true;
       const { error: err } = await supabase.from('karyawan').insert([payload]); error = err;
     }
-
     if (error) alert('Gagal: ' + error.message);
     else { setShowModal(false); fetchData(); }
     setLoading(false);
@@ -138,13 +116,11 @@ export default function KaryawanPage() {
     setLoading(true); setErrorsAbsen({});
     const now = new Date(new Date().getTime() + (7 * 60 * 60000));
     const todayStr = now.toISOString().split('T')[0];
-    
     const { data } = await supabase.from('absensi').select('*').eq('id_karyawan', id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).lte('waktu_masuk', `${todayStr}T23:59:59+07:00`).single();
 
     if (data) {
        const sudahMasuk = !!data.waktu_masuk; const sudahKeluar = !!data.waktu_keluar; const isIzinCuti = ['Izin', 'Cuti'].includes(data.status);
        let setStatus = 'Masuk'; let setJam = '07'; let setMenit = '00';
-
        if (isIzinCuti) { setStatus = data.status; } 
        else if (sudahMasuk && !sudahKeluar) { setStatus = 'Keluar'; setJam = '17'; } 
        else if (sudahMasuk) {
@@ -242,7 +218,7 @@ export default function KaryawanPage() {
                     <div className="flex justify-end gap-2">
                       {!kar.is_approved && (<button onClick={() => aksiApprove(kar.id)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui Akun"><Check className="w-4 h-4"/></button>)}
                       
-                      {/* TOMBOL EDIT KARYAWAN KEMBALI */}
+                      {/* TOMBOL EDIT KARYAWAN */}
                       <button onClick={() => bukaEditKaryawan(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Edit Data Karyawan"><Edit2 className="w-4 h-4"/></button>
                       
                       <button onClick={() => bukaInputManual(kar.id)} className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 rounded-lg" title="Input Absen Manual"><Clock className="w-4 h-4"/></button>
@@ -342,7 +318,6 @@ export default function KaryawanPage() {
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
-                {/* MENU DROPDOWN DEPARTEMEN */}
                 <select value={form.id_departemen} onChange={e => {setForm({...form, id_departemen: e.target.value}); setErrorsKar({...errorsKar, id_departemen: null});}} className={getStyleInput(errorsKar.id_departemen)}>
                   <option value="">-- Pilih Departemen --</option>
                   {departemen.map(d => <option key={d.id} value={d.id}>{d.nama_departemen}</option>)}
@@ -359,7 +334,7 @@ export default function KaryawanPage() {
         </div>
       )}
 
-      {/* MODAL INPUT ABSEN MANUAL */}
+      {/* MODAL INPUT ABSEN MANUAL (HARI INI) */}
       {showManualModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
