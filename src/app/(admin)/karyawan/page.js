@@ -8,15 +8,19 @@ export default function KaryawanPage() {
   const [departemen, setDepartemen] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Modal Tambah/Edit Karyawan
   const [showModal, setShowModal] = useState(false);
   const [editKarId, setEditKarId] = useState(null); 
+  const [regType, setRegType] = useState('MT'); // MT atau BO
   const [form, setForm] = useState({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
   const [errorsKar, setErrorsKar] = useState({});
 
+  // Modal Input Manual Absen
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualForm, setManualForm] = useState({ id: null, id_karyawan: '', status: 'Masuk', jam: '07', menit: '00', keterangan: '', updated_at: null });
   const [errorsAbsen, setErrorsAbsen] = useState({});
 
+  // Modal Departemen
   const [showDeptModal, setShowDeptModal] = useState(false);
   const [deptForm, setDeptForm] = useState({ id: null, nama_departemen: '', id_leader: '' });
 
@@ -32,6 +36,7 @@ export default function KaryawanPage() {
     setDepartemen(deptData || []); setKaryawan(karData || []);
   };
 
+  // =================== LOGIKA DEPARTEMEN ===================
   const handleSimpanDept = async (e) => {
     e.preventDefault(); setLoading(true);
     const payload = { nama_departemen: deptForm.nama_departemen, id_leader: deptForm.id_leader || null };
@@ -39,11 +44,8 @@ export default function KaryawanPage() {
     if (deptForm.id) { const { error: err } = await supabase.from('master_departemen').update(payload).eq('id', deptForm.id); error = err; } 
     else { const { error: err } = await supabase.from('master_departemen').insert([payload]); error = err; }
     
-    if (error) {
-       alert('Gagal Simpan: ' + error.message + '\n\nJika error terkait permission, pastikan Anda telah menjalankan kueri DISABLE ROW LEVEL SECURITY di SQL Editor.');
-    } else { 
-       setDeptForm({ id: null, nama_departemen: '', id_leader: '' }); fetchData(); 
-    }
+    if (error) alert('Gagal Simpan: ' + error.message);
+    else { setDeptForm({ id: null, nama_departemen: '', id_leader: '' }); fetchData(); }
     setLoading(false);
   };
 
@@ -60,8 +62,11 @@ export default function KaryawanPage() {
     return leader ? `${dept.nama_departemen} (Naungan ${leader.nama_lengkap})` : dept.nama_departemen;
   };
 
+  // =================== LOGIKA KARYAWAN ===================
   const bukaTambahKaryawan = () => {
-    setEditKarId(null); setForm({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
+    setEditKarId(null); 
+    setRegType('MT');
+    setForm({ nip: '', nama_lengkap: '', username: '', id_departemen: '' });
     setErrorsKar({}); setShowModal(true);
   };
 
@@ -90,26 +95,41 @@ export default function KaryawanPage() {
   const handleSimpanKaryawan = async (e) => {
     e.preventDefault(); 
     let errs = {};
-    if (!form.nip) errs.nip = "* NIP wajib diisi";
-    if (!form.username) errs.username = "* Username wajib diisi";
     if (!form.nama_lengkap) errs.nama_lengkap = "* Nama Lengkap wajib diisi";
-    if (!form.id_departemen) errs.id_departemen = "* Departemen wajib dipilih"; 
+    if (!form.id_departemen) errs.id_departemen = "* Divisi Team wajib dipilih"; 
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
 
     setLoading(true);
-    const payload = { nip: form.nip, nama_lengkap: form.nama_lengkap, username: form.username, id_departemen: form.id_departemen || null }; 
+    let payload = { nama_lengkap: form.nama_lengkap, id_departemen: form.id_departemen || null }; 
+    
     let error;
     if (editKarId) {
-      const { error: err } = await supabase.from('karyawan').update(payload).eq('id', editKarId); error = err;
+      // Mode Edit: Hanya update Nama dan Departemen (NIP & Username terkunci)
+      const { error: err } = await supabase.from('karyawan').update(payload).eq('id', editKarId); 
+      error = err;
     } else {
-      payload.password = 'admin123'; payload.role = 'Karyawan'; payload.is_approved = true;
-      const { error: err } = await supabase.from('karyawan').insert([payload]); error = err;
+      // Mode Tambah Baru: Generator NIP & Username Otomatis
+      const cleanName = form.nama_lengkap.trim().replace(/[^a-zA-Z0-9]/g, '').substring(0, 4).toUpperCase();
+      const randomStr = Math.floor(100 + Math.random() * 900);
+      const prefix = regType === 'MT' ? 'MT' : 'BO';
+      const generatedId = `${prefix}-${cleanName}${randomStr}`; 
+
+      payload.nip = generatedId;
+      payload.username = generatedId.toLowerCase();
+      payload.password = 'admin123'; 
+      payload.role = 'Karyawan'; 
+      payload.is_approved = true;
+
+      const { error: err } = await supabase.from('karyawan').insert([payload]); 
+      error = err;
     }
+
     if (error) alert('Gagal: ' + error.message);
     else { setShowModal(false); fetchData(); }
     setLoading(false);
   };
 
+  // =================== LOGIKA ABSEN MANUAL ===================
   const bukaInputManual = async (id) => {
     setLoading(true); setErrorsAbsen({});
     const now = new Date(new Date().getTime() + (7 * 60 * 60000));
@@ -163,8 +183,6 @@ export default function KaryawanPage() {
   };
 
   const getStyleInput = (isError) => `w-full px-3 py-2 border rounded-lg mt-1 outline-none transition-colors text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
-
-  // Mengumpulkan nama departemen unik untuk saran otomatis (Auto-Suggest)
   const listNamaUnikDept = [...new Set(departemen.map(d => d.nama_departemen))];
 
   return (
@@ -244,7 +262,6 @@ export default function KaryawanPage() {
                <div className="space-y-4">
                  <div>
                    <label className="text-sm font-semibold text-slate-700">Nama Induk Departemen</label>
-                   {/* AUTO-SUGGEST DITAMBAHKAN DI SINI */}
                    <input required list="daftar-induk" type="text" value={deptForm.nama_departemen} onChange={e => setDeptForm({...deptForm, nama_departemen: e.target.value})} className={getStyleInput(false)} placeholder="Contoh: Backoffice"/>
                    <datalist id="daftar-induk">
                      {listNamaUnikDept.map(nama => <option key={nama} value={nama} />)}
@@ -293,39 +310,60 @@ export default function KaryawanPage() {
         </div>
       )}
 
-      {/* MODAL TAMBAH/EDIT KARYAWAN MANUAL */}
+      {/* MODAL DAFTAR/EDIT KARYAWAN */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-slate-200">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white">
-              <h2 className="text-lg font-bold text-slate-900">{editKarId ? 'Edit Karyawan' : 'Tambah Karyawan Manual'}</h2>
+              <h2 className="text-lg font-bold text-slate-900">{editKarId ? 'Edit Data Karyawan' : 'Daftar Karyawan Baru'}</h2>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-rose-500"><X className="w-5 h-5" /></button>
             </div>
+            
             <form onSubmit={handleSimpanKaryawan} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">NIP <span className="text-rose-500">*</span></label>
-                  <input type="text" value={form.nip} onChange={e => {setForm({...form, nip: e.target.value}); setErrorsKar({...errorsKar, nip: null});}} className={getStyleInput(errorsKar.nip)}/>
-                  {errorsKar.nip && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.nip}</p>}
-                </div>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Username <span className="text-rose-500">*</span></label>
-                  <input type="text" value={form.username} onChange={e => {setForm({...form, username: e.target.value.toLowerCase().replace(/\s/g,'')}); setErrorsKar({...errorsKar, username: null});}} className={getStyleInput(errorsKar.username)}/>
-                  {errorsKar.username && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.username}</p>}
-                </div>
-              </div>
+              {/* Jika Buat Baru: Tampilkan Toggle MT/BO */}
+              {!editKarId && (
+                <>
+                  <div className="flex gap-3 mb-2">
+                     <button type="button" onClick={() => setRegType('MT')} className={`flex-1 py-2.5 text-sm font-bold rounded-xl border-2 transition-all ${regType === 'MT' ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>
+                       Daftar MT
+                     </button>
+                     <button type="button" onClick={() => setRegType('BO')} className={`flex-1 py-2.5 text-sm font-bold rounded-xl border-2 transition-all ${regType === 'BO' ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-blue-300'}`}>
+                       Daftar BO / Manager
+                     </button>
+                  </div>
+                  <div className="bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-lg text-xs text-slate-600 mb-4">
+                     Pendaftaran {regType} hanya memerlukan nama dan divisi team. NIP dan Username akan di-generate otomatis.
+                  </div>
+                </>
+              )}
+
+              {/* Jika Edit: Tampilkan Kolom NIP/Username Terkunci */}
+              {editKarId && (
+                 <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">NIP (Read-Only)</label>
+                      <input type="text" value={form.nip} disabled className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed"/>
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-500 block mb-1">Username (Read-Only)</label>
+                      <input type="text" value={form.username} disabled className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed"/>
+                    </div>
+                 </div>
+              )}
+
               <div>
                 <label className="text-sm font-semibold text-slate-700">Nama Lengkap <span className="text-rose-500">*</span></label>
-                <input type="text" value={form.nama_lengkap} onChange={e => {setForm({...form, nama_lengkap: e.target.value}); setErrorsKar({...errorsKar, nama_lengkap: null});}} className={getStyleInput(errorsKar.nama_lengkap)}/>
+                <input type="text" value={form.nama_lengkap} onChange={e => {setForm({...form, nama_lengkap: e.target.value}); setErrorsKar({...errorsKar, nama_lengkap: null});}} className={getStyleInput(errorsKar.nama_lengkap)} placeholder="Contoh: Aris Wijaya"/>
                 {errorsKar.nama_lengkap && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.nama_lengkap}</p>}
               </div>
+
               <div>
-                <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
+                <label className="text-sm font-semibold text-slate-700">Divisi Team <span className="text-rose-500">*</span></label>
                 <select value={form.id_departemen} onChange={e => {setForm({...form, id_departemen: e.target.value}); setErrorsKar({...errorsKar, id_departemen: null});}} className={getStyleInput(errorsKar.id_departemen)}>
-                  <option value="">-- Pilih Departemen --</option>
+                  <option value="">-- Pilih Divisi Team --</option>
                   {departemen.map(d => {
                      const leader = karyawan.find(k => k.id === d.id_leader);
-                     return <option key={d.id} value={d.id}>{d.nama_departemen} {leader ? `(Naungan ${leader.nama_lengkap})` : ''}</option>
+                     return <option key={d.id} value={d.id}>{d.nama_departemen} {leader ? `(Team ${leader.nama_lengkap})` : ''}</option>
                   })}
                 </select>
                 {errorsKar.id_departemen && <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{errorsKar.id_departemen}</p>}
@@ -333,7 +371,7 @@ export default function KaryawanPage() {
 
               <div className="pt-4 flex justify-end gap-3 border-t border-slate-100 mt-6 pt-6">
                 <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
-                <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Proses...' : 'Simpan'}</button>
+                <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Proses...' : (editKarId ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}</button>
               </div>
             </form>
           </div>
