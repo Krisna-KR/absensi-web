@@ -40,41 +40,31 @@ export default function LoginPage() {
     router.replace('/');
   };
 
-  const kelasInput = 'w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder-slate-400 outline-none focus:border-blue-400 focus:bg-white/10 focus:ring-4 focus:ring-blue-500/20 transition';
+  const kelasInput = 'w-full px-4 py-3 rounded-xl bg-white/70 border border-white text-slate-900 placeholder-slate-400 shadow-[inset_2px_2px_5px_rgba(15,23,42,0.06)] outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/15 transition';
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-slate-100">
-      <div className="w-full max-w-4xl grid md:grid-cols-2 rounded-[28px] overflow-hidden shadow-2xl shadow-slate-900/20 border border-white bg-white">
+      <div className="relative w-full max-w-4xl grid md:grid-cols-2 rounded-[28px] overflow-hidden shadow-2xl shadow-slate-900/15 border border-white bg-[#eef1f6]">
+        {/* Latar kaca: warna menyebar ke kedua sisi */}
+        <div className="absolute -top-24 -left-16 w-80 h-80 rounded-full bg-blue-500/30 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 left-1/3 w-96 h-96 rounded-full bg-amber-400/40 blur-3xl pointer-events-none" />
+        <div className="absolute -top-20 -right-16 w-72 h-72 rounded-full bg-indigo-400/25 blur-3xl pointer-events-none" />
 
-        {/* Panel kiri: logo liquid glass */}
-        <div className="relative overflow-hidden bg-[#eef1f6] flex flex-col items-center justify-center px-8 py-12 md:py-16 min-h-[280px]">
-          <div className="absolute -top-16 -left-10 w-64 h-64 rounded-full bg-blue-500/35 blur-3xl" />
-          <div className="absolute bottom-[-60px] right-[-40px] w-72 h-72 rounded-full bg-amber-400/45 blur-3xl" />
-          <div className="absolute top-1/2 left-1/3 w-40 h-40 rounded-full bg-indigo-400/25 blur-2xl" />
-
-          <div className="relative w-40 h-40 md:w-48 md:h-48 rounded-[2.5rem] bg-white/25 backdrop-blur-2xl border border-white/70
-            shadow-[18px_18px_40px_rgba(15,23,42,0.18),-14px_-14px_36px_rgba(255,255,255,0.95),inset_2px_2px_1px_rgba(255,255,255,0.85),inset_-2px_-2px_6px_rgba(15,23,42,0.08)]
-            flex items-center justify-center">
-            <div className="absolute inset-x-3 top-2 h-1/2 rounded-t-[2.1rem] bg-gradient-to-b from-white/70 to-transparent pointer-events-none" />
-            <div className="absolute inset-0 rounded-[2.5rem] ring-1 ring-inset ring-white/40 pointer-events-none" />
-            <Image src="/logo-kr.png" alt="Logo KR" width={112} height={112} priority
-              className="relative w-24 h-24 md:w-28 md:h-28 rounded-[1.6rem] shadow-[0_10px_24px_rgba(180,120,10,0.35)]" />
-          </div>
-
-          <div className="relative mt-8 text-center">
-            <p className="text-xl font-bold text-slate-900 tracking-tight">Absensi KR</p>
-            <p className="mt-2 text-sm text-slate-600 max-w-[260px] leading-relaxed">
-              Kehadiran tim pialang Malang dan Surabaya, tercatat dari kiosk sampai laporan.
-            </p>
+        {/* Kiri: logo liquid glass */}
+        <div className="relative flex items-center justify-center px-8 py-12 md:py-20 min-h-[260px]">
+          <div className="relative w-44 h-44 md:w-56 md:h-56 rounded-[2.75rem] p-2 bg-white/35 backdrop-blur-2xl border border-white/80
+            shadow-[18px_18px_40px_rgba(15,23,42,0.18),-14px_-14px_36px_rgba(255,255,255,0.95)]">
+            <Image src="/logo-kr-besar.png" alt="Logo KR" width={512} height={512} priority
+              className="w-full h-full object-cover rounded-[2.3rem] shadow-[0_12px_28px_rgba(180,120,10,0.35)]" />
+            {/* kilau kaca di atas logo */}
+            <div className="absolute inset-2 rounded-[2.3rem] bg-gradient-to-br from-white/45 via-white/5 to-transparent pointer-events-none" />
+            <div className="absolute inset-2 rounded-[2.3rem] ring-1 ring-inset ring-white/50 pointer-events-none" />
           </div>
         </div>
 
-        {/* Panel kanan: form */}
-        <div className="bg-slate-900 text-white px-8 py-12 sm:px-12 flex flex-col justify-center">
-          <h1 className="text-3xl font-bold tracking-tight">Masuk</h1>
-          <p className="mt-2 text-sm text-slate-400 leading-relaxed">
-            Pantau jam masuk tim marketing dan backoffice, lalu rapikan rekapnya sebelum tutup bulan.
-          </p>
+        {/* Kanan: form, warna kaca terang seperti sisi kiri */}
+        <div className="relative px-8 py-12 sm:px-12 flex flex-col justify-center bg-white/40 backdrop-blur-xl md:border-l border-white/70">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Login</h1>
 
           <form onSubmit={masuk} className="mt-8 space-y-4" noValidate>
             <div>
@@ -87,17 +77,17 @@ export default function LoginPage() {
               <input id="password" type={lihatSandi ? 'text' : 'password'} autoComplete="current-password" value={form.password}
                 onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password" className={`${kelasInput} pr-12`} />
               <button type="button" onClick={() => setLihatSandi(v => !v)} aria-label={lihatSandi ? 'Sembunyikan password' : 'Tampilkan password'}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10">
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100">
                 {lihatSandi ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
 
-            {galat && <p role="alert" className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-lg px-3 py-2">{galat}</p>}
+            {galat && <p role="alert" className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{galat}</p>}
 
             <button type="submit" disabled={loading}
-              className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 font-semibold shadow-lg shadow-blue-900/40 transition disabled:opacity-60">
+              className="w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-lg shadow-blue-600/30 transition disabled:opacity-60">
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-              {loading ? 'Memeriksa...' : 'Masuk'}
+              {loading ? 'Memeriksa...' : 'Login'}
             </button>
           </form>
 
