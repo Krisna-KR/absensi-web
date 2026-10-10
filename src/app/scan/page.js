@@ -182,10 +182,16 @@ export default function MobileScannerPage() {
         if (error) throw (error.code === '23505' ? new Error('Sudah absen MASUK hari ini.') : error);
         setMessage('BERHASIL ABSEN MASUK');
       } else {
-        if (!absenHariIni) throw new Error('Belum absen MASUK hari ini.');
-        if (absenHariIni.waktu_keluar) throw new Error('Sudah absen KELUAR hari ini.');
-        const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', absenHariIni.id);
-        if (error) throw error; setMessage('BERHASIL ABSEN KELUAR');
+        if (absenHariIni?.waktu_keluar) throw new Error('Sudah absen KELUAR hari ini.');
+        if (absenHariIni) {
+          const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', absenHariIni.id);
+          if (error) throw error;
+        } else {
+          // Tidak absen masuk: tetap dicatat absen keluar, status otomatis Terlambat (trigger DB)
+          const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: null, waktu_keluar: new Date().toISOString() }]);
+          if (error) throw (error.code === '23505' ? new Error('Sudah absen KELUAR hari ini.') : error);
+        }
+        setMessage('BERHASIL ABSEN KELUAR');
       }
       fetchDataHariIni(karyawan.id); 
     } catch (error) { setMessage(`GAGAL: ${error.message}`); }
@@ -196,8 +202,9 @@ export default function MobileScannerPage() {
 
   const handleLogout = () => { alert('Perangkat telah dikunci secara permanen pada sesi ini.'); };
 
-  const isSelesai = todayAbsen?.waktu_masuk && todayAbsen?.waktu_keluar;
-  const isBisaMasuk = !todayAbsen?.waktu_masuk;
+  const isSelesai = !!todayAbsen?.waktu_keluar;
+  // Sebelum 12:00 dan belum ada data -> Check In; setelahnya -> Check Out (boleh tanpa absen masuk)
+  const isBisaMasuk = !todayAbsen?.waktu_masuk && !isSelesai && jamWIB() < 12;
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center text-slate-900 font-sans">

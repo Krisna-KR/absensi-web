@@ -7,7 +7,7 @@ import { JABATAN_BACKOFFICE } from '@/utils/kehadiran';
 
 const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '' };
 const JENIS_MANUAL = [
-  { v: 'Hadir', l: 'Hadir (input jam masuk & pulang)' },
+  { v: 'Hadir', l: 'Hadir (input jam masuk / pulang)' },
   { v: 'Izin', l: 'Izin (kepentingan pribadi)' },
   { v: 'Sakit', l: 'Sakit' },
   { v: 'Cuti', l: 'Cuti' },
@@ -199,7 +199,7 @@ export default function KaryawanPage() {
     if (!m.tanggal) errs.tanggal = '* Tanggal wajib diisi';
     if (m.jenis === 'Hadir') {
       if (m.tanggal > hariIni) errs.tanggal = '* Kehadiran tidak bisa diinput untuk tanggal mendatang';
-      if (!m.masuk) errs.masuk = '* Jam masuk wajib diisi';
+      if (!m.masuk && !m.keluar) errs.masuk = '* Isi jam masuk, jam pulang, atau keduanya';
       if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = '* Jam pulang harus setelah jam masuk';
     } else if (!m.keterangan.trim()) {
       errs.keterangan = '* Keterangan wajib diisi';
@@ -212,7 +212,7 @@ export default function KaryawanPage() {
       ({ error } = await supabase.from('absensi').upsert({
         id_karyawan: m.kar.id,
         tanggal: m.tanggal,
-        waktu_masuk: `${m.tanggal}T${m.masuk}:00+07:00`,
+        waktu_masuk: m.masuk ? `${m.tanggal}T${m.masuk}:00+07:00` : null,
         waktu_keluar: m.keluar ? `${m.tanggal}T${m.keluar}:00+07:00` : null,
         keterangan: m.keterangan.trim() || null,
       }, { onConflict: 'id_karyawan,tanggal' }));
@@ -466,7 +466,7 @@ export default function KaryawanPage() {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-semibold text-slate-700">Jam Masuk <span className="text-rose-500">*</span></label>
+                    <label className="text-sm font-semibold text-slate-700">Jam Masuk</label>
                     <input type="time" value={manual.masuk} onChange={e => setManual({ ...manual, masuk: e.target.value })} className={getStyleInput(errorsManual.masuk)} />
                     <ErrText msg={errorsManual.masuk} />
                   </div>
@@ -476,7 +476,7 @@ export default function KaryawanPage() {
                     <ErrText msg={errorsManual.keluar} />
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500">Status Hadir/Terlambat dihitung otomatis (lewat 08:00 = Terlambat). Format 24 jam WIB.</p>
+                <p className="text-[11px] text-slate-500">Status dihitung otomatis: lewat 08:00 = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Format 24 jam WIB.</p>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Alasan Input Manual</label>
                   <input type="text" placeholder="Contoh: HP rusak / kamera tidak bisa diakses" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />
