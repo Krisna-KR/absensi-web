@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Plus, Trash2, CalendarOff } from 'lucide-react';
 import { tanggalWIB, formatTanggal } from '@/utils/waktu';
+import { pesanError } from '@/utils/pesanError';
+import { useFeedback } from '@/components/Feedback';
 
 const FORM_KOSONG = { tanggal: '', keterangan: '', jenis: 'Libur Nasional' };
 
@@ -12,6 +14,7 @@ export default function MasterDataPage() {
   const [libur, setLibur] = useState([]);
   const [form, setForm] = useState(FORM_KOSONG);
   const [loading, setLoading] = useState(false);
+  const { toast, konfirmasi } = useFeedback();
   const [versi, setVersi] = useState(0);
   const muatUlang = () => setVersi(v => v + 1);
 
@@ -21,26 +24,33 @@ export default function MasterDataPage() {
       const { data, error } = await supabase.from('master_libur').select('*')
         .gte('tanggal', `${tahun}-01-01`).lte('tanggal', `${tahun}-12-31`).order('tanggal');
       if (batal) return;
-      if (error) alert('Gagal memuat: ' + error.message);
+      if (error) toast(`Daftar libur belum bisa dimuat. ${pesanError(error)}`, 'gagal');
       setLibur(data || []);
     })();
     return () => { batal = true; };
-  }, [tahun, versi]);
+  }, [tahun, versi, toast]);
 
   const simpan = async (e) => {
     e.preventDefault();
-    if (!form.tanggal || !form.keterangan.trim()) { alert('Tanggal dan keterangan wajib diisi.'); return; }
+    if (!form.tanggal || !form.keterangan.trim()) return;
     setLoading(true);
     const { error } = await supabase.from('master_libur').upsert({ ...form, keterangan: form.keterangan.trim() }, { onConflict: 'tanggal' });
     setLoading(false);
-    if (error) { alert('Gagal: ' + error.message); return; }
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`${formatTanggal(form.tanggal)} tercatat sebagai ${form.jenis}.`);
     setForm(FORM_KOSONG); muatUlang();
   };
 
   const hapus = async (tanggal) => {
-    if (!confirm(`Hapus libur ${formatTanggal(tanggal)}? Hari itu akan kembali dihitung hari kerja.`)) return;
+    const ok = await konfirmasi({
+      judul: `Hapus libur ${formatTanggal(tanggal)}?`,
+      pesan: 'Tanggal ini kembali jadi hari kerja. Karyawan yang tidak absen di tanggal itu tercatat Bolos.',
+      tombolYa: 'Hapus', nada: 'bahaya',
+    });
+    if (!ok) return;
     const { error } = await supabase.from('master_libur').delete().eq('tanggal', tanggal);
-    if (error) alert('Gagal: ' + error.message); else muatUlang();
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`Libur ${formatTanggal(tanggal)} dihapus.`); muatUlang();
   };
 
   return (
@@ -71,7 +81,7 @@ export default function MasterDataPage() {
             <option value="Cuti Bersama">Cuti Bersama</option>
           </select>
         </div>
-        <button type="submit" disabled={loading} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium h-[38px]">
+        <button type="submit" disabled={loading || !form.tanggal || !form.keterangan.trim()} title={!form.tanggal || !form.keterangan.trim() ? 'Isi tanggal dan keterangan dulu' : ''} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium h-[38px] disabled:opacity-40 disabled:cursor-not-allowed">
           <Plus className="w-4 h-4" /> Simpan
         </button>
       </form>

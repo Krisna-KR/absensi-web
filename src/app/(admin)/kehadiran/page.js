@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { LogIn, LogOut, Calendar, Filter } from 'lucide-react';
 import { rentangPeriode, formatJam, formatTanggal } from '@/utils/waktu';
 import { ambilKehadiran, STATUS_KEHADIRAN } from '@/utils/kehadiran';
+import { pesanError } from '@/utils/pesanError';
 
 export default function KehadiranPage() {
   const [data, setData] = useState([]);
@@ -10,6 +11,7 @@ export default function KehadiranPage() {
   const [periode, setPeriode] = useState('hari_ini');
   const [customDate, setCustomDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('semua');
+  const [galat, setGalat] = useState('');
 
   const rentang = useMemo(() => rentangPeriode(periode, customDate), [periode, customDate]);
 
@@ -19,9 +21,9 @@ export default function KehadiranPage() {
     (async () => {
       try {
         const rows = await ambilKehadiran(rentang);
-        if (!batal) setData(rows);
+        if (!batal) { setData(rows); setGalat(''); }
       } catch (e) {
-        if (!batal) { alert('Gagal memuat data: ' + e.message); setData([]); }
+        if (!batal) { setGalat(pesanError(e)); setData([]); }
       }
       if (!batal) setLoading(false);
     })();
@@ -67,6 +69,8 @@ export default function KehadiranPage() {
         </div>
       </div>
 
+      {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Data kehadiran belum bisa dimuat. {galat}</div>}
+
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden min-h-[400px]">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap min-w-[800px]">
@@ -84,7 +88,7 @@ export default function KehadiranPage() {
               {loading ? (
                 <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">Memuat data kehadiran...</td></tr>
               ) : tampil.length === 0 ? (
-                <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">{rentang ? 'Tidak ada data pada periode/filter ini.' : 'Pilih tanggal terlebih dahulu.'}</td></tr>
+                <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">{rentang ? 'Belum ada data untuk periode dan filter ini.' : 'Pilih tanggal terlebih dahulu.'}</td></tr>
               ) : (
                 tampil.map((r) => {
                   const st = STATUS_KEHADIRAN[r.status] || { label: r.status, cls: 'bg-slate-50 text-slate-600 border-slate-200' };

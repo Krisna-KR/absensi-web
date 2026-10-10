@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { Users, Clock, CalendarDays, Calendar, UserX } from 'lucide-react';
 import { rentangPeriode } from '@/utils/waktu';
 import { ambilKehadiran, hitungStatus } from '@/utils/kehadiran';
+import { pesanError } from '@/utils/pesanError';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({ hadir: 0, telat: 0, izin: 0, bolos: 0 });
@@ -20,7 +21,7 @@ export default function Dashboard() {
         setStats({ hadir: c.Hadir, telat: c.Late, izin: c.Izin + c.Sakit + c.Cuti, bolos: c.Bolos });
         setError('');
       } catch (e) {
-        if (!batal) setError(e.message);
+        if (!batal) setError(pesanError(e));
       }
       if (!batal) setLoading(false);
     })();
@@ -51,7 +52,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Gagal memuat data: {error}</div>}
+      {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Ringkasan belum bisa dimuat. {error}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {kartu.map(({ judul, nilai, icon: Icon, warna }) => (

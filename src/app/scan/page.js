@@ -5,6 +5,9 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus } from 'lucide-react';
 import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
 import { ambilKehadiran, hitungStatus, STATUS_KEHADIRAN, JABATAN_BACKOFFICE } from '@/utils/kehadiran';
+import { pesanError } from '@/utils/pesanError';
+import { useFeedback } from '@/components/Feedback';
+import Image from 'next/image';
 
 // Data karyawan yang aman disimpan di HP (tanpa password)
 const dataSesi = (k) => ({ id: k.id, nama_lengkap: k.nama_lengkap, nip: k.nip, username: k.username });
@@ -19,6 +22,8 @@ export default function MobileScannerPage() {
   const [rekap, setRekap] = useState({ masuk: 0, izin: 0, telat: 0, bolos: 0 });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [hasilScan, setHasilScan] = useState(null); // { sukses, judul, pesan }
+  const { info } = useFeedback();
   
   // State Registrasi
   const [regType, setRegType] = useState('MT'); // 'MT' atau 'BO'
@@ -36,7 +41,15 @@ export default function MobileScannerPage() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') setDeferredPrompt(null);
     } else {
-      alert('Fitur instalasi otomatis belum siap.\n\nAndroid: Tekan ikon titik 3 di pojok atas > "Add to Home screen"\niOS/iPhone: Tekan tombol Share (panah ke atas) > "Add to Home Screen"');
+      info({
+        judul: 'Pasang aplikasi di HP',
+        pesan: (
+          <ul className="space-y-2">
+            <li><b>Android:</b> ketuk ikon titik tiga di pojok kanan atas, lalu pilih <i>Add to Home screen</i>.</li>
+            <li><b>iPhone:</b> ketuk tombol Share (kotak dengan panah ke atas), lalu pilih <i>Add to Home Screen</i>.</li>
+          </ul>
+        ),
+      });
     }
   };
 
@@ -45,7 +58,7 @@ export default function MobileScannerPage() {
     const localDeviceId = localStorage.getItem('device_id');
     
     if (!cekUser?.device_id || cekUser.device_id !== localDeviceId) {
-      alert('Sesi Berakhir: Perangkat Anda telah di-Unbind oleh Administrator.');
+      info({ judul: 'Silakan login ulang', pesan: 'Admin melepas akunmu dari HP ini. Login lagi supaya akunmu terkunci ke HP yang sedang kamu pakai.' });
       localStorage.clear(); sessionStorage.clear(); setKaryawan(null); setStep(1); return;
     }
 
@@ -57,7 +70,7 @@ export default function MobileScannerPage() {
       const c = hitungStatus(rows);
       setRekap({ masuk: c.Hadir + c.Late, izin: c.Izin + c.Sakit + c.Cuti, telat: c.Late, bolos: c.Bolos });
     } catch (e) {
-      setMessage('Gagal memuat data: ' + e.message);
+      setMessage(`Data absensimu belum bisa dimuat. ${pesanError(e)}`);
     }
   };
 
@@ -92,17 +105,19 @@ export default function MobileScannerPage() {
     const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    // Sengaja hanya dijalankan sekali saat halaman dibuka
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true); setMessage('');
     const { data, error } = await supabase.from('karyawan').select('*').eq('username', form.username).eq('password', form.password).single();
-    if (error || !data) { setMessage('Username/Password salah.'); setLoading(false); return; }
-    if (!data.is_approved) { setMessage('Akun belum disetujui Admin.'); setLoading(false); return; }
+    if (error || !data) { setMessage('Username atau password tidak cocok. Periksa lagi, lalu coba masuk.'); setLoading(false); return; }
+    if (!data.is_approved) { setMessage('Akunmu belum disetujui admin. Hubungi admin untuk mengaktifkannya.'); setLoading(false); return; }
 
     let currentDeviceId = localStorage.getItem('device_id');
     if (!currentDeviceId) { currentDeviceId = crypto.randomUUID(); localStorage.setItem('device_id', currentDeviceId); }
-    if (data.device_id && data.device_id !== currentDeviceId) { setMessage('Akses Ditolak: Terkunci di perangkat lain.'); setLoading(false); return; }
+    if (data.device_id && data.device_id !== currentDeviceId) { setMessage('Akun ini terkunci di HP lain. Minta admin melepas HP lama supaya kamu bisa masuk dari HP ini.'); setLoading(false); return; }
     if (!data.device_id) { await supabase.from('karyawan').update({ device_id: currentDeviceId }).eq('id', data.id); data.device_id = currentDeviceId; }
 
     localStorage.setItem('karyawan_data', JSON.stringify(dataSesi(data)));
@@ -115,7 +130,7 @@ export default function MobileScannerPage() {
 
     const isMT = regType === 'MT';
     if (!regForm.nama_lengkap.trim() || (isMT && !regForm.id_atasan) || (!isMT && !regForm.jabatan)) {
-       setMessage(isMT ? 'Nama Lengkap dan Business Manager wajib diisi.' : 'Nama Lengkap dan Jabatan wajib diisi.'); setLoading(false); return;
+       setMessage(isMT ? 'Isi nama lengkap dan pilih Business Manager kamu.' : 'Isi nama lengkap dan pilih jabatan kamu.'); setLoading(false); return;
     }
 
     // NIP & username dibuat otomatis oleh database (format umum, tanpa kode jabatan)
@@ -131,9 +146,20 @@ export default function MobileScannerPage() {
 
     const { data, error } = await supabase.from('karyawan').insert([payload]).select('username').single();
     
-    if (error) { setMessage('Gagal mendaftar: ' + error.message); } 
+    if (error) { setMessage(`Pendaftaran belum berhasil. ${pesanError(error)}`); } 
     else {
-      alert(`PENDAFTARAN BERHASIL!\n\nUsername Anda: ${data.username}\nPassword Default: admin123\n\nHarap simpan username ini untuk Login.`);
+      await info({
+        judul: 'Pendaftaran berhasil', nada: 'sukses', tombolYa: 'Lanjut login',
+        pesan: (
+          <div className="space-y-3">
+            <p>Simpan username ini. Kamu butuh untuk login.</p>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 bg-slate-50 border border-slate-200 rounded-lg p-3 font-mono text-slate-900">
+              <dt className="text-slate-500">Username</dt><dd className="font-bold">{data.username}</dd>
+              <dt className="text-slate-500">Sandi</dt><dd>admin123</dd>
+            </dl>
+          </div>
+        ),
+      });
       // Langsung isikan ke form login agar karyawan mudah masuk
       setForm({ username: data.username, password: 'admin123' });
       setRegForm({ nama_lengkap: '', id_atasan: '', jabatan: '' });
@@ -151,56 +177,67 @@ export default function MobileScannerPage() {
         { facingMode: mode }, { fps: 10, qrbox: { width: 250, height: 250 } },
         async (decodedText) => { await html5QrCode.stop().catch(() => {}); await prosesAbsensi(decodedText); }, () => {} 
       );
-    } catch (err) { setMessage('Kamera error: ' + err.message); }
+    } catch { setMessage('Kamera belum bisa dibuka. Izinkan akses kamera untuk situs ini di pengaturan browser, lalu coba lagi.'); }
   };
 
-  const openScanner = () => { setStep(3); setTimeout(() => startCamera(cameraMode), 300); };
+  const openScanner = () => { setMessage(''); setStep(3); setTimeout(() => startCamera(cameraMode), 300); };
   const toggleCamera = () => { const newMode = cameraMode === 'environment' ? 'user' : 'environment'; setCameraMode(newMode); startCamera(newMode); };
   const batalScanner = async () => { if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) { await html5QrCodeRef.current.stop().catch(() => {}); html5QrCodeRef.current.clear(); } setStep(2); };
 
   const prosesAbsensi = async (qrData) => {
-    setLoading(true); setStep(4);
+    setLoading(true); setHasilScan(null); setStep(4);
+    const gagal = (judul, pesan) => { const e = new Error(pesan); e.judul = judul; return e; };
     try {
-      if (!qrData.startsWith('ABSENSI-KR-')) throw new Error('Kode QR tidak valid.');
-      if ((Date.now() - parseInt(qrData.split('-')[2])) / 1000 > 60) throw new Error('Kode QR kedaluwarsa.');
+      if (!qrData.startsWith('ABSENSI-KR-')) throw gagal('QR tidak dikenali', 'QR ini bukan QR absensi. Pindai QR yang tampil di layar kiosk.');
+      if ((Date.now() - parseInt(qrData.split('-')[2])) / 1000 > 60) throw gagal('QR sudah kedaluwarsa', 'QR di kiosk berganti tiap beberapa detik. Pindai QR yang sedang tampil sekarang.');
 
       const currentHour = jamWIB();
 
       let jenisAbsen = '';
       if (currentHour >= 7 && currentHour < 12) jenisAbsen = 'MASUK';
       else if (currentHour >= 12 && currentHour <= 23) jenisAbsen = 'KELUAR';
-      else throw new Error(`Di luar jam operasional (Terdeteksi jam ${currentHour}:00 WIB).`);
+      else throw gagal('Absen belum dibuka', `Absen dibuka mulai jam 07.00 WIB. Sekarang jam ${String(currentHour).padStart(2, '0')}.xx WIB.`);
 
       const todayStr = tanggalWIB();
       const { data: absenHariIni, error: errCek } = await supabase.from('absensi').select('id, waktu_keluar').eq('id_karyawan', karyawan.id).eq('tanggal', todayStr).maybeSingle();
       if (errCek) throw errCek;
 
       if (jenisAbsen === 'MASUK') {
-        if (absenHariIni) throw new Error('Sudah absen MASUK hari ini.');
+        if (absenHariIni) throw gagal('Kamu sudah absen masuk', 'Absen masuk hari ini sudah tercatat. Absen pulang dibuka mulai jam 12.00 WIB.');
         // Status Hadir/Late & tanggal dihitung oleh database (trigger fn_absensi_hitung)
         const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: new Date().toISOString() }]);
-        if (error) throw (error.code === '23505' ? new Error('Sudah absen MASUK hari ini.') : error);
-        setMessage('BERHASIL ABSEN MASUK');
+        if (error) throw (error.code === '23505' ? gagal('Kamu sudah absen masuk', 'Absen masuk hari ini sudah tercatat. Absen pulang dibuka mulai jam 12.00 WIB.') : error);
+        setHasilScan({ sukses: true, judul: 'Absen masuk tercatat', pesan: `Jam ${formatJamDetik(new Date().toISOString())} WIB. Selamat bekerja.` });
       } else {
-        if (absenHariIni?.waktu_keluar) throw new Error('Sudah absen KELUAR hari ini.');
+        if (absenHariIni?.waktu_keluar) throw gagal('Kamu sudah absen pulang', 'Absen pulang hari ini sudah tercatat. Sampai jumpa besok.');
         if (absenHariIni) {
           const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', absenHariIni.id);
           if (error) throw error;
         } else {
           // Tidak absen masuk: tetap dicatat absen keluar, status otomatis Terlambat (trigger DB)
           const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: null, waktu_keluar: new Date().toISOString() }]);
-          if (error) throw (error.code === '23505' ? new Error('Sudah absen KELUAR hari ini.') : error);
+          if (error) throw (error.code === '23505' ? gagal('Kamu sudah absen pulang', 'Absen pulang hari ini sudah tercatat. Sampai jumpa besok.') : error);
         }
-        setMessage('BERHASIL ABSEN KELUAR');
+        setHasilScan({
+          sukses: true, judul: 'Absen pulang tercatat',
+          pesan: absenHariIni
+            ? `Jam ${formatJamDetik(new Date().toISOString())} WIB. Terima kasih untuk hari ini.`
+            : `Jam ${formatJamDetik(new Date().toISOString())} WIB. Hari ini kamu tidak absen masuk, jadi statusmu tercatat Terlambat.`,
+        });
       }
       fetchDataHariIni(karyawan.id); 
-    } catch (error) { setMessage(`GAGAL: ${error.message}`); }
+    } catch (error) {
+      setHasilScan({ sukses: false, judul: error.judul || 'Absen belum tercatat', pesan: error.judul ? error.message : pesanError(error) });
+    }
     setLoading(false);
   };
 
   const formatJam = formatJamDetik;
 
-  const handleLogout = () => { alert('Perangkat telah dikunci secara permanen pada sesi ini.'); };
+  const handleLogout = () => info({
+    judul: 'Akunmu terkunci di HP ini',
+    pesan: 'Kamu tidak perlu logout. Kalau mau pindah HP, minta admin melepas HP ini dari akunmu.',
+  });
 
   const isSelesai = !!todayAbsen?.waktu_keluar;
   // Sebelum 12:00 dan belum ada data -> Check In; setelahnya -> Check Out (boleh tanpa absen masuk)
@@ -213,7 +250,7 @@ export default function MobileScannerPage() {
         {/* HEADER */}
         <div className="flex justify-between items-center p-5 bg-white border-b border-slate-200 z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-extrabold shadow-sm">KR</div>
+            <Image src="/logo-kr.png" alt="Logo KR" width={40} height={40} priority className="w-10 h-10 rounded-lg shadow-sm" />
             <h1 className="font-bold text-lg text-slate-900 tracking-wide">Absensi Karyawan</h1>
           </div>
           <div className="flex gap-2">
@@ -301,6 +338,7 @@ export default function MobileScannerPage() {
           <div className="flex-1 flex flex-col items-center pt-8 px-6 pb-24 overflow-y-auto">
              <h2 className="text-3xl font-black text-slate-900">Absensi</h2>
              <p className="text-slate-500 text-sm mt-1 mb-8">Hi, {karyawan?.nama_lengkap}.</p>
+             {message && <div className="w-full -mt-4 mb-6 p-3 bg-rose-50 text-rose-700 text-sm rounded-xl border border-rose-200">{message}</div>}
 
              <div className="w-full bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-12">
                <div className="text-center mb-6">
@@ -365,6 +403,7 @@ export default function MobileScannerPage() {
              </div>
              <div className="flex-1 relative flex flex-col items-center justify-center bg-[#050505]">
                 <div id="reader" className="w-full max-w-sm overflow-hidden bg-black rounded-3xl border border-slate-800 shadow-2xl"></div>
+                {message && <p className="mt-6 mx-6 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-200 text-sm text-center">{message}</p>}
                 <button onClick={toggleCamera} className="mt-10 flex items-center gap-2 bg-slate-800 text-white px-8 py-4 rounded-full font-bold border border-slate-700 active:bg-slate-700 transition-colors">
                   <RefreshCcw className="w-5 h-5" /> Putar Kamera
                 </button>
@@ -375,10 +414,18 @@ export default function MobileScannerPage() {
         {/* FASE 4: STATUS ABSENSI */}
         {step === 4 && (
           <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50">
-            {message.includes('BERHASIL') ? <div className="w-28 h-28 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-8 border border-blue-100 shadow-sm"><CheckCircle2 className="w-14 h-14" /></div> : <div className="w-28 h-28 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-8 border border-rose-100 shadow-sm"><AlertCircle className="w-14 h-14" /></div>}
-            <h2 className={`text-3xl font-black mb-3 tracking-wide ${message.includes('BERHASIL') ? 'text-blue-600' : 'text-rose-600'}`}>{message.includes('BERHASIL') ? message : 'GAGAL'}</h2>
-            {!message.includes('BERHASIL') && <p className="text-slate-500 text-center font-medium">{message.replace('GAGAL: ', '')}</p>}
-            <button onClick={() => { setStep(2); setMessage(''); }} className="mt-12 px-10 py-4 bg-slate-900 text-white font-extrabold rounded-full hover:bg-slate-800 transition-colors shadow-md">Kembali ke Dasbor</button>
+            {loading || !hasilScan ? (
+              <p className="text-slate-500 font-medium">Mencatat absensi...</p>
+            ) : (
+              <>
+                <div className={`w-28 h-28 rounded-full flex items-center justify-center mb-8 border shadow-sm ${hasilScan.sukses ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                  {hasilScan.sukses ? <CheckCircle2 className="w-14 h-14" /> : <AlertCircle className="w-14 h-14" />}
+                </div>
+                <h2 className={`text-2xl font-black mb-3 text-center ${hasilScan.sukses ? 'text-blue-600' : 'text-rose-600'}`}>{hasilScan.judul}</h2>
+                <p className="text-slate-500 text-center font-medium max-w-xs">{hasilScan.pesan}</p>
+              </>
+            )}
+            <button onClick={() => { setStep(2); setMessage(''); setHasilScan(null); }} disabled={loading} className="mt-12 px-10 py-4 bg-slate-900 text-white font-extrabold rounded-full hover:bg-slate-800 transition-colors shadow-md">Kembali ke Dasbor</button>
           </div>
         )}
 

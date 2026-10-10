@@ -1,6 +1,7 @@
 'use client';
 import { Bell, Calendar, Home, LogOut, Users, FileText, Umbrella, QrCode } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 
 export default function AdminLayout({ children }) {
@@ -20,9 +21,9 @@ export default function AdminLayout({ children }) {
         {/* LOGO */}
         <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full border border-slate-200 bg-slate-50 flex items-center justify-center text-blue-600 font-bold">KR</div>
+              <Image src="/logo-kr.png" alt="Logo KR" width={40} height={40} priority className="w-10 h-10 rounded-lg shadow-sm" />
               <div className="flex items-center gap-2">
-                  <span className="text-slate-900 font-bold text-lg tracking-wide">Absensi KR</span>
+                  <span className="text-slate-900 font-bold text-lg tracking-wide whitespace-nowrap">Absensi KR</span>
                   <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200 rounded">ADMIN</span>
               </div>
             </div>

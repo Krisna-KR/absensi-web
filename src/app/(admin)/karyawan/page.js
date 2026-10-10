@@ -2,8 +2,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp } from 'lucide-react';
-import { tanggalWIB, jamMenitWIB, formatTanggalWaktu } from '@/utils/waktu';
-import { JABATAN_BACKOFFICE } from '@/utils/kehadiran';
+import { tanggalWIB, jamMenitWIB, formatTanggal, formatTanggalWaktu } from '@/utils/waktu';
+import { JABATAN_BACKOFFICE, STATUS_KEHADIRAN } from '@/utils/kehadiran';
+import { pesanError } from '@/utils/pesanError';
+import { useFeedback } from '@/components/Feedback';
 
 const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '' };
 const JENIS_MANUAL = [
@@ -14,7 +16,7 @@ const JENIS_MANUAL = [
 ];
 
 // Didefinisikan di luar komponen agar input tidak kehilangan fokus saat re-render
-const ErrText = ({ msg }) => msg ? <p className="text-rose-500 text-[10px] mt-1 italic font-bold">{msg}</p> : null;
+const ErrText = ({ msg }) => msg ? <p className="text-rose-600 text-xs mt-1">{msg}</p> : null;
 
 const Modal = ({ judul, onClose, children, lebar = 'max-w-md' }) => (
   <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -32,6 +34,7 @@ export default function KaryawanPage() {
   const [karyawan, setKaryawan] = useState([]);
   const [departemen, setDepartemen] = useState([]);
   const [loading, setLoading] = useState(false);
+  const { toast, konfirmasi, info } = useFeedback();
 
   // Modal Tambah/Edit Karyawan
   const [showModal, setShowModal] = useState(false);
@@ -73,20 +76,36 @@ export default function KaryawanPage() {
   const daftarBM = karyawan.filter(k => namaDept(k) === 'Backoffice' && k.jabatan === 'Business Manager' && k.is_approved);
 
   // =================== AKSI CEPAT ===================
-  const aksiApprove = async (id) => {
-    if (!confirm('Setujui akun ini?')) return;
-    await supabase.from('karyawan').update({ is_approved: true }).eq('id', id); fetchData();
+  const aksiApprove = async (kar) => {
+    const ok = await konfirmasi({ judul: `Setujui akun ${kar.nama_lengkap}?`, pesan: 'Setelah disetujui, karyawan ini bisa login dan absen dari HP.', tombolYa: 'Setujui' });
+    if (!ok) return;
+    const { error } = await supabase.from('karyawan').update({ is_approved: true }).eq('id', kar.id);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`Akun ${kar.nama_lengkap} sudah aktif.`); fetchData();
   };
 
-  const aksiKick = async (id) => {
-    if (!confirm('Tendang perangkat ini agar karyawan bisa login di HP baru?')) return;
-    await supabase.from('karyawan').update({ device_id: null }).eq('id', id); fetchData();
+  const aksiKick = async (kar) => {
+    const ok = await konfirmasi({
+      judul: `Lepas HP ${kar.nama_lengkap}?`,
+      pesan: `${kar.nama_lengkap} akan keluar dari HP yang sekarang. Akunnya terkunci lagi ke HP yang dia pakai saat login berikutnya.`,
+      tombolYa: 'Lepas HP', nada: 'bahaya',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('karyawan').update({ device_id: null }).eq('id', kar.id);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`HP ${kar.nama_lengkap} sudah dilepas. Dia bisa login dari HP baru.`); fetchData();
   };
 
-  const aksiResetSandi = async (id) => {
-    if (!confirm('Reset sandi karyawan ini menjadi admin123?')) return;
-    await supabase.from('karyawan').update({ password: 'admin123' }).eq('id', id);
-    alert('Sandi berhasil direset menjadi: admin123'); fetchData();
+  const aksiResetSandi = async (kar) => {
+    const ok = await konfirmasi({
+      judul: `Reset sandi ${kar.nama_lengkap}?`,
+      pesan: <>Sandi kembali ke <b className="font-mono">admin123</b>. Sandi lama tidak bisa dipakai lagi.</>,
+      tombolYa: 'Reset sandi', nada: 'bahaya',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('karyawan').update({ password: 'admin123' }).eq('id', kar.id);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`Sandi ${kar.nama_lengkap} sekarang admin123.`); fetchData();
   };
 
   // =================== TAMBAH / EDIT KARYAWAN ===================
@@ -98,16 +117,39 @@ export default function KaryawanPage() {
     setErrorsKar({}); setShowModal(true);
   };
 
-  // Jenis perubahan struktur yang akan tercatat (hanya mode edit)
+  // Perubahan struktur yang akan tercatat di riwayat (hanya mode edit)
   const previewPerubahan = () => {
     if (!editKar) return null;
+    const nama = editKar.nama_lengkap;
     const deptLama = namaDept(editKar);
-    if (deptLama === 'Marketing' && form.dept === 'Backoffice') return { teks: 'Promosi: Marketing → Backoffice. Atasan akan dilepas.', icon: TrendingUp };
-    if (deptLama && form.dept && deptLama !== form.dept) return { teks: `Mutasi: ${deptLama} → ${form.dept}.`, icon: ArrowRightLeft };
-    if (form.dept === 'Marketing' && (editKar.id_atasan || '') !== form.id_atasan && form.id_atasan)
-      return { teks: `Transfer atasan: ${karById[editKar.id_atasan]?.nama_lengkap || '(kosong)'} → ${karById[form.id_atasan]?.nama_lengkap}.`, icon: ArrowRightLeft };
-    if (form.dept === 'Backoffice' && (editKar.jabatan || '') !== form.jabatan && form.jabatan)
-      return { teks: `Perubahan jabatan: ${editKar.jabatan || '(kosong)'} → ${form.jabatan}.`, icon: ArrowRightLeft };
+    const atasanLama = karById[editKar.id_atasan]?.nama_lengkap || 'belum ada';
+    const atasanBaru = karById[form.id_atasan]?.nama_lengkap;
+    if (deptLama === 'Marketing' && form.dept === 'Backoffice') return {
+      icon: TrendingUp, teks: `Promosi ke Backoffice${form.jabatan ? ` sebagai ${form.jabatan}` : ''}. Atasan lama dilepas.`,
+      judul: `Promosikan ${nama} ke Backoffice?`,
+      pesan: `${nama} jadi ${form.jabatan || 'karyawan Backoffice'} dan tidak lagi punya atasan. Riwayat struktur mencatat promosi ini.`,
+      tombolYa: 'Promosikan',
+    };
+    if (deptLama && form.dept && deptLama !== form.dept) return {
+      icon: ArrowRightLeft, teks: `Pindah departemen: ${deptLama} → ${form.dept}.`,
+      judul: `Pindahkan ${nama} ke ${form.dept}?`,
+      pesan: `Riwayat struktur mencatat perpindahan ${nama} dari ${deptLama} ke ${form.dept}.`,
+      tombolYa: 'Pindahkan',
+    };
+    if (form.dept === 'Marketing' && (editKar.id_atasan || '') !== form.id_atasan && form.id_atasan) return {
+      icon: ArrowRightLeft, teks: `Atasan berubah: ${atasanLama} → ${atasanBaru}.`,
+      judul: `Pindahkan ${nama} ke tim ${atasanBaru}?`,
+      pesan: editKar.id_atasan
+        ? `${nama} keluar dari tim ${atasanLama} dan masuk tim ${atasanBaru}. Riwayat struktur mencatat perpindahan ini.`
+        : `${nama} belum punya atasan. Setelah disimpan, ${atasanBaru} jadi atasannya dan riwayat struktur mencatatnya.`,
+      tombolYa: 'Simpan',
+    };
+    if (form.dept === 'Backoffice' && (editKar.jabatan || '') !== form.jabatan && form.jabatan) return {
+      icon: ArrowRightLeft, teks: `Jabatan berubah: ${editKar.jabatan || 'belum ada'} → ${form.jabatan}.`,
+      judul: `Ubah jabatan ${nama} jadi ${form.jabatan}?`,
+      pesan: 'Riwayat struktur mencatat perubahan jabatan ini.',
+      tombolYa: 'Ubah jabatan',
+    };
     return null;
   };
   const perubahan = previewPerubahan();
@@ -116,12 +158,12 @@ export default function KaryawanPage() {
   const handleSimpanKaryawan = async (e) => {
     e.preventDefault();
     const errs = {};
-    if (!form.nama_lengkap.trim()) errs.nama_lengkap = '* Nama Lengkap wajib diisi';
-    if (!form.dept) errs.dept = '* Departemen wajib dipilih';
-    if (form.dept === 'Marketing' && !form.id_atasan) errs.id_atasan = '* Marketing wajib memilih 1 Business Manager';
-    if (form.dept === 'Backoffice' && !form.jabatan) errs.jabatan = '* Jabatan wajib dipilih';
+    if (!form.nama_lengkap.trim()) errs.nama_lengkap = 'Isi nama lengkap.';
+    if (!form.dept) errs.dept = 'Pilih Marketing atau Backoffice.';
+    if (form.dept === 'Marketing' && !form.id_atasan) errs.id_atasan = 'Pilih Business Manager yang membawahi karyawan ini.';
+    if (form.dept === 'Backoffice' && !form.jabatan) errs.jabatan = 'Pilih jabatan.';
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
-    if (perubahan && !confirm(`${perubahan.teks}\n\nPerubahan ini dicatat di riwayat struktur. Lanjutkan?`)) return;
+    if (perubahan && !(await konfirmasi({ judul: perubahan.judul, pesan: perubahan.pesan, tombolYa: perubahan.tombolYa }))) return;
 
     setLoading(true);
     const payload = {
@@ -133,51 +175,70 @@ export default function KaryawanPage() {
 
     if (editKar) {
       const { error } = await supabase.from('karyawan').update(payload).eq('id', editKar.id);
-      if (error) alert('Gagal: ' + error.message);
-      else { setShowModal(false); fetchData(); }
+      setLoading(false);
+      if (error) { toast(pesanError(error), 'gagal'); return; }
+      toast(`Data ${payload.nama_lengkap} tersimpan.`);
+      setShowModal(false); fetchData();
     } else {
       // NIP & username dibuat otomatis oleh database (trigger fn_karyawan_generate_id)
       const { data, error } = await supabase.from('karyawan')
         .insert([{ ...payload, password: 'admin123', role: 'Karyawan', is_approved: true }])
         .select('nip, username').single();
-      if (error) alert('Gagal: ' + error.message);
-      else {
-        alert(`Karyawan terdaftar.\n\nNIP: ${data.nip}\nUsername: ${data.username}\nPassword: admin123`);
-        setShowModal(false); fetchData();
-      }
+      setLoading(false);
+      if (error) { toast(pesanError(error), 'gagal'); return; }
+      setShowModal(false); fetchData();
+      await info({
+        judul: `${payload.nama_lengkap} sudah terdaftar`, nada: 'sukses', tombolYa: 'Selesai',
+        pesan: (
+          <div className="space-y-3">
+            <p>Berikan data login ini ke {payload.nama_lengkap} untuk masuk dari HP.</p>
+            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 bg-slate-50 border border-slate-200 rounded-lg p-3 font-mono text-slate-900">
+              <dt className="text-slate-500">NIP</dt><dd>{data.nip}</dd>
+              <dt className="text-slate-500">Username</dt><dd className="font-bold">{data.username}</dd>
+              <dt className="text-slate-500">Sandi</dt><dd>admin123</dd>
+            </dl>
+          </div>
+        ),
+      });
     }
-    setLoading(false);
   };
 
   // =================== TRANSFER BAWAHAN ===================
   const bukaTransfer = (bm) => setTransfer({ dari: bm, ids: bawahanOf(bm.id).map(k => k.id), ke: '' });
 
   const simpanTransfer = async () => {
-    if (!transfer.ke) { alert('Pilih Business Manager tujuan.'); return; }
-    if (transfer.ids.length === 0) { alert('Pilih minimal 1 bawahan.'); return; }
     const tujuan = karById[transfer.ke]?.nama_lengkap;
-    if (!confirm(`Pindahkan ${transfer.ids.length} Marketing dari ${transfer.dari.nama_lengkap} ke ${tujuan}?`)) return;
+    const n = transfer.ids.length;
+    const ok = await konfirmasi({
+      judul: `Pindahkan ${n} Marketing ke tim ${tujuan}?`,
+      pesan: `Mereka keluar dari tim ${transfer.dari.nama_lengkap}. Riwayat struktur mencatat setiap perpindahan.`,
+      tombolYa: 'Pindahkan',
+    });
+    if (!ok) return;
     setLoading(true);
     const { error } = await supabase.from('karyawan').update({ id_atasan: transfer.ke }).in('id', transfer.ids);
     setLoading(false);
-    if (error) { alert('Gagal: ' + error.message); return; }
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`${n} Marketing sudah pindah ke tim ${tujuan}.`);
     setTransfer(null); fetchData();
   };
 
   // =================== RIWAYAT STRUKTUR ===================
   const bukaRiwayat = async (kar) => {
     const { data, error } = await supabase.from('riwayat_struktur').select('*').eq('id_karyawan', kar.id).order('berlaku_mulai', { ascending: false });
-    if (error) { alert('Gagal memuat riwayat: ' + error.message); return; }
+    if (error) { toast(pesanError(error), 'gagal'); return; }
     setRiwayat({ kar, rows: data || [] });
   };
 
   // =================== INPUT MANUAL (BYPASS ADMIN) ===================
   const muatManual = async (kar, tanggal) => {
     setLoading(true); setErrorsManual({});
-    const [{ data: abs }, { data: izin }] = await Promise.all([
+    const [{ data: abs, error: e1 }, { data: izin, error: e2 }] = await Promise.all([
       supabase.from('absensi').select('*').eq('id_karyawan', kar.id).eq('tanggal', tanggal).maybeSingle(),
       supabase.from('izin_harian').select('*').eq('id_karyawan', kar.id).eq('tanggal', tanggal).maybeSingle(),
     ]);
+    setLoading(false);
+    if (e1 || e2) { toast(pesanError(e1 || e2), 'gagal'); return; }
     setManual({
       kar, tanggal,
       jenis: izin ? izin.jenis : 'Hadir',
@@ -186,25 +247,34 @@ export default function KaryawanPage() {
       keterangan: izin?.keterangan || abs?.keterangan || '',
       absensiId: abs?.id || null,
       izinId: izin?.id || null,
-      info: abs ? `Data absensi ada (status ${abs.status}${abs.updated_at ? `, diubah ${formatTanggalWaktu(abs.updated_at)}` : ''})`
-          : izin ? `Tercatat ${izin.jenis} (${izin.status_approval || 'Pending'})` : 'Belum ada data. Tanpa input, hari kerja ini dihitung Bolos.',
+      info: abs ? `Sudah ada absensi (${STATUS_KEHADIRAN[abs.status]?.label || abs.status})${abs.updated_at ? `, terakhir diubah ${formatTanggalWaktu(abs.updated_at)}` : ''}.`
+          : izin ? `Tercatat ${izin.jenis} (${izin.status_approval || 'Pending'}).` : 'Belum ada data. Kalau tanggal ini hari kerja dan tetap kosong, statusnya Bolos.',
     });
-    setShowManual(true); setLoading(false);
+    setShowManual(true);
   };
 
   const simpanManual = async (e) => {
     e.preventDefault();
     const m = manual; const errs = {};
     const hariIni = tanggalWIB();
-    if (!m.tanggal) errs.tanggal = '* Tanggal wajib diisi';
+    if (!m.tanggal) errs.tanggal = 'Pilih tanggal.';
     if (m.jenis === 'Hadir') {
-      if (m.tanggal > hariIni) errs.tanggal = '* Kehadiran tidak bisa diinput untuk tanggal mendatang';
-      if (!m.masuk && !m.keluar) errs.masuk = '* Isi jam masuk, jam pulang, atau keduanya';
-      if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = '* Jam pulang harus setelah jam masuk';
+      if (m.tanggal > hariIni) errs.tanggal = 'Jam hadir hanya bisa diisi untuk hari ini atau sebelumnya.';
+      if (!m.masuk && !m.keluar) errs.masuk = 'Isi jam masuk, jam pulang, atau keduanya.';
+      if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = 'Jam pulang harus setelah jam masuk.';
     } else if (!m.keterangan.trim()) {
-      errs.keterangan = '* Keterangan wajib diisi';
+      errs.keterangan = `Tulis alasan ${m.jenis.toLowerCase()}, misalnya "demam, ada surat dokter".`;
     }
     if (Object.keys(errs).length > 0) { setErrorsManual(errs); return; }
+
+    if (m.jenis !== 'Hadir' && m.absensiId) {
+      const ok = await konfirmasi({
+        judul: `Ganti absensi jadi ${m.jenis}?`,
+        pesan: `${m.kar.nama_lengkap} sudah punya jam masuk/pulang di ${formatTanggal(m.tanggal)}. Kalau lanjut, jam itu terhapus dan diganti ${m.jenis}.`,
+        tombolYa: `Ganti jadi ${m.jenis}`, nada: 'bahaya',
+      });
+      if (!ok) return;
+    }
 
     setLoading(true);
     let error;
@@ -218,7 +288,6 @@ export default function KaryawanPage() {
       }, { onConflict: 'id_karyawan,tanggal' }));
       if (!error && m.izinId) ({ error } = await supabase.from('izin_harian').delete().eq('id', m.izinId));
     } else {
-      if (m.absensiId && !confirm('Tanggal ini sudah ada jam masuk/pulang. Data jam akan dihapus dan diganti ' + m.jenis + '. Lanjutkan?')) { setLoading(false); return; }
       ({ error } = await supabase.from('izin_harian').upsert({
         id_karyawan: m.kar.id, tanggal: m.tanggal, jenis: m.jenis,
         keterangan: m.keterangan.trim(), status_approval: 'Disetujui',
@@ -226,18 +295,27 @@ export default function KaryawanPage() {
       if (!error && m.absensiId) ({ error } = await supabase.from('absensi').delete().eq('id', m.absensiId));
     }
     setLoading(false);
-    if (error) { alert('Gagal: ' + error.message); return; }
-    alert('Data berhasil disimpan.'); setShowManual(false);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`Absensi ${m.kar.nama_lengkap} untuk ${formatTanggal(m.tanggal)} tersimpan.`);
+    setShowManual(false);
   };
 
   const kosongkanManual = async () => {
     const m = manual;
     if (!m.absensiId && !m.izinId) return;
-    if (!confirm(`Hapus semua data ${m.kar.nama_lengkap} di tanggal ${m.tanggal}? Hari kerja tanpa data akan dihitung Bolos.`)) return;
+    const ok = await konfirmasi({
+      judul: `Kosongkan data ${formatTanggal(m.tanggal)}?`,
+      pesan: `Semua catatan ${m.kar.nama_lengkap} di tanggal ini terhapus. Kalau tanggal ini hari kerja, statusnya jadi Bolos.`,
+      tombolYa: 'Kosongkan', nada: 'bahaya',
+    });
+    if (!ok) return;
     setLoading(true);
-    if (m.absensiId) await supabase.from('absensi').delete().eq('id', m.absensiId);
-    if (m.izinId) await supabase.from('izin_harian').delete().eq('id', m.izinId);
-    setLoading(false); setShowManual(false);
+    const r1 = m.absensiId ? await supabase.from('absensi').delete().eq('id', m.absensiId) : {};
+    const r2 = m.izinId ? await supabase.from('izin_harian').delete().eq('id', m.izinId) : {};
+    setLoading(false);
+    if (r1.error || r2.error) { toast(pesanError(r1.error || r2.error), 'gagal'); return; }
+    toast(`Data ${m.kar.nama_lengkap} di ${formatTanggal(m.tanggal)} sudah dikosongkan.`);
+    setShowManual(false);
   };
 
   const getStyleInput = (isError) => `w-full px-3 py-2 border rounded-lg mt-1 outline-none transition-colors text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
@@ -281,7 +359,7 @@ export default function KaryawanPage() {
                       </span>
                       {dept === 'Marketing' && (
                         <p className={`text-xs mt-1.5 ${atasan ? 'text-slate-500' : 'text-rose-600 font-semibold'}`}>
-                          {atasan ? `Atasan: ${atasan.nama_lengkap}` : 'Belum punya atasan — wajib diisi'}
+                          {atasan ? `Atasan: ${atasan.nama_lengkap}` : 'Belum punya atasan. Klik edit untuk memilih.'}
                         </p>
                       )}
                       {kar.jabatan === 'Business Manager' && (
@@ -301,13 +379,13 @@ export default function KaryawanPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
-                        {!kar.is_approved && (<button onClick={() => aksiApprove(kar.id)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui Akun"><Check className="w-4 h-4" /></button>)}
-                        <button onClick={() => bukaEdit(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Edit / Transfer / Promosi"><Edit2 className="w-4 h-4" /></button>
-                        {bawahan.length > 0 && (<button onClick={() => bukaTransfer(kar)} className="p-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100 rounded-lg" title="Transfer Bawahan"><Users className="w-4 h-4" /></button>)}
-                        <button onClick={() => bukaRiwayat(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Riwayat Struktur"><History className="w-4 h-4" /></button>
-                        <button onClick={() => muatManual(kar, tanggalWIB())} className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 rounded-lg" title="Input Absen Manual"><Clock className="w-4 h-4" /></button>
-                        <button onClick={() => aksiResetSandi(kar.id)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Reset Sandi ke admin123"><KeyRound className="w-4 h-4" /></button>
-                        {kar.device_id && (<button onClick={() => aksiKick(kar.id)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Kick / Unbind Perangkat"><Trash2 className="w-4 h-4" /></button>)}
+                        {!kar.is_approved && (<button onClick={() => aksiApprove(kar)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui akun"><Check className="w-4 h-4" /></button>)}
+                        <button onClick={() => bukaEdit(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Edit, pindah tim, atau promosi"><Edit2 className="w-4 h-4" /></button>
+                        {bawahan.length > 0 && (<button onClick={() => bukaTransfer(kar)} className="p-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100 rounded-lg" title="Pindahkan bawahan"><Users className="w-4 h-4" /></button>)}
+                        <button onClick={() => bukaRiwayat(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Riwayat struktur"><History className="w-4 h-4" /></button>
+                        <button onClick={() => muatManual(kar, tanggalWIB())} className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 rounded-lg" title="Input absen manual"><Clock className="w-4 h-4" /></button>
+                        <button onClick={() => aksiResetSandi(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Reset sandi ke admin123"><KeyRound className="w-4 h-4" /></button>
+                        {kar.device_id && (<button onClick={() => aksiKick(kar)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Lepas HP"><Trash2 className="w-4 h-4" /></button>)}
                       </div>
                     </td>
                   </tr>
@@ -340,7 +418,7 @@ export default function KaryawanPage() {
                   <option value="">-- Pilih Business Manager --</option>
                   {daftarBM.filter(b => b.id !== editKar?.id).map(b => <option key={b.id} value={b.id}>{b.nama_lengkap}</option>)}
                 </select>
-                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada Business Manager. Daftarkan Backoffice dengan jabatan Business Manager dulu.</p>}
+                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada Business Manager. Tambahkan dulu karyawan Backoffice dengan jabatan Business Manager.</p>}
                 <ErrText msg={errorsKar.id_atasan} />
               </div>
             )}
@@ -381,7 +459,7 @@ export default function KaryawanPage() {
 
             <div className="flex justify-end gap-3 pt-2">
               <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
-              <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Proses...' : (editKar ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}</button>
+              <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Menyimpan...' : (editKar ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}</button>
             </div>
           </form>
         </Modal>
@@ -389,7 +467,7 @@ export default function KaryawanPage() {
 
       {/* MODAL TRANSFER BAWAHAN */}
       {transfer && (
-        <Modal judul={`Transfer Bawahan ${transfer.dari.nama_lengkap}`} onClose={() => setTransfer(null)}>
+        <Modal judul={`Pindahkan bawahan ${transfer.dari.nama_lengkap}`} onClose={() => setTransfer(null)}>
           <div className="p-6 space-y-4">
             <div>
               <p className="text-sm font-semibold text-slate-700 mb-2">Pilih Marketing yang dipindah</p>
@@ -413,7 +491,7 @@ export default function KaryawanPage() {
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setTransfer(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200">Batal</button>
-              <button onClick={simpanTransfer} disabled={loading} className="px-6 py-2 text-white font-medium bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm">{loading ? 'Proses...' : 'Transfer'}</button>
+              <button onClick={simpanTransfer} disabled={loading || !transfer.ke || transfer.ids.length === 0} className="px-6 py-2 text-white font-medium bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{loading ? 'Memindahkan...' : 'Pindahkan'}</button>
             </div>
           </div>
         </Modal>
@@ -432,7 +510,7 @@ export default function KaryawanPage() {
                       {!r.berlaku_sampai && <span className="text-[10px] font-bold text-blue-700">AKTIF</span>}
                     </div>
                     <p className="text-sm text-slate-900 mt-1">{deptById[r.id_departemen] || '-'} · {r.jabatan || '-'}{r.id_atasan ? ` · Atasan: ${karById[r.id_atasan]?.nama_lengkap || '(dihapus)'}` : ''}</p>
-                    <p className="text-[11px] text-slate-500 mt-1">{formatTanggalWaktu(r.berlaku_mulai)} — {r.berlaku_sampai ? formatTanggalWaktu(r.berlaku_sampai) : 'sekarang'}</p>
+                    <p className="text-[11px] text-slate-500 mt-1">{formatTanggalWaktu(r.berlaku_mulai)} sampai {r.berlaku_sampai ? formatTanggalWaktu(r.berlaku_sampai) : 'sekarang'}</p>
                   </li>
                 ))}
               </ol>
@@ -494,7 +572,7 @@ export default function KaryawanPage() {
               <button type="button" onClick={kosongkanManual} disabled={loading || (!manual.absensiId && !manual.izinId)} className="px-3 py-2 text-rose-600 text-sm font-medium rounded-lg hover:bg-rose-50 disabled:opacity-30 disabled:hover:bg-transparent">Kosongkan</button>
               <div className="flex gap-3">
                 <button type="button" onClick={() => setShowManual(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
-                <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">{loading ? 'Proses...' : 'Simpan'}</button>
+                <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">{loading ? 'Menyimpan...' : 'Simpan'}</button>
               </div>
             </div>
           </form>
