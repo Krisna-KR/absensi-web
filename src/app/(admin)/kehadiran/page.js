@@ -157,12 +157,17 @@ export default function KehadiranPage() {
                     <td className="px-6 py-3 text-slate-700">{formatTanggal(r.tanggal)}</td>
                     <td className="px-6 py-3 text-center">
                       {r.waktu_masuk ? (
-                        <span className="inline-flex items-center gap-1.5 text-slate-800 font-medium tabular-nums"><LogIn className="w-3.5 h-3.5 text-slate-400" />{formatJam(r.waktu_masuk)}</span>
+                        <span title={r.status === 'Late' ? 'Masuk terlambat' : 'Masuk tepat waktu'}
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-sm font-semibold tabular-nums ${r.status === 'Late' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                          <LogIn className="w-4 h-4" />{formatJam(r.waktu_masuk)}
+                        </span>
                       ) : <span className="text-slate-300">–</span>}
                     </td>
                     <td className="px-6 py-3 text-center">
                       {r.waktu_keluar ? (
-                        <span className="inline-flex items-center gap-1.5 text-slate-800 font-medium tabular-nums"><LogOut className="w-3.5 h-3.5 text-slate-400" />{formatJam(r.waktu_keluar)}</span>
+                        <span title="Jam pulang" className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 text-white text-sm font-semibold tabular-nums">
+                          <LogOut className="w-4 h-4" />{formatJam(r.waktu_keluar)}
+                        </span>
                       ) : <span className="text-slate-300">–</span>}
                     </td>
                     <td className="px-6 py-3">
