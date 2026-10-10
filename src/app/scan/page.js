@@ -3,6 +3,11 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
 import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus } from 'lucide-react';
+import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
+import { ambilKehadiran, hitungStatus, STATUS_KEHADIRAN, JABATAN_BACKOFFICE } from '@/utils/kehadiran';
+
+// Data karyawan yang aman disimpan di HP (tanpa password)
+const dataSesi = (k) => ({ id: k.id, nama_lengkap: k.nama_lengkap, nip: k.nip, username: k.username });
 
 export default function MobileScannerPage() {
   // Step 0: Register, Step 1: Login, Step 2: Dashboard, Step 3: Kamera, Step 4: Status
@@ -11,52 +16,19 @@ export default function MobileScannerPage() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [karyawan, setKaryawan] = useState(null);
   const [todayAbsen, setTodayAbsen] = useState(null);
+  const [rekap, setRekap] = useState({ masuk: 0, izin: 0, telat: 0, bolos: 0 });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   
   // State Registrasi
   const [regType, setRegType] = useState('MT'); // 'MT' atau 'BO'
-  const [regForm, setRegForm] = useState({ nama_lengkap: '', id_departemen: '' });
-  const [departemenList, setDepartemenList] = useState([]);
+  const [regForm, setRegForm] = useState({ nama_lengkap: '', id_atasan: '', jabatan: '' });
+  const [deptIdByName, setDeptIdByName] = useState({});
+  const [daftarBM, setDaftarBM] = useState([]);
 
   const html5QrCodeRef = useRef(null);
   const [cameraMode, setCameraMode] = useState('environment');
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-
-  useEffect(() => {
-    const checkSesi = async () => {
-      const savedKaryawan = localStorage.getItem('karyawan_data');
-      if (savedKaryawan) {
-        try {
-          const parsed = JSON.parse(savedKaryawan);
-          const { data, error } = await supabase.from('karyawan').select('id, is_approved').eq('id', parsed.id).single();
-          if (error || !data || !data.is_approved) {
-            localStorage.clear(); sessionStorage.clear(); setStep(1); return;
-          }
-          setKaryawan(parsed); fetchDataHariIni(parsed.id); setStep(2);
-        } catch (e) { localStorage.clear(); setStep(1); }
-      }
-    };
-    checkSesi();
-
-    // Fetch Departemen untuk Dropdown Register
-    const fetchDept = async () => {
-      const { data: deptData } = await supabase.from('master_departemen').select('*');
-      const { data: karData } = await supabase.from('karyawan').select('id, nama_lengkap');
-      if (deptData && karData) {
-         const mapped = deptData.map(d => {
-            const leader = karData.find(k => k.id === d.id_leader);
-            return { ...d, leader_name: leader ? leader.nama_lengkap : '' };
-         });
-         setDepartemenList(mapped);
-      }
-    };
-    fetchDept();
-
-    const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-  }, []);
 
   const handleInstallApp = async () => {
     if (deferredPrompt) {
@@ -77,11 +49,50 @@ export default function MobileScannerPage() {
       localStorage.clear(); sessionStorage.clear(); setKaryawan(null); setStep(1); return;
     }
 
-    const localDate = new Date(new Date().getTime() + (7 * 60 * 60000));
-    const todayStr = localDate.toISOString().split('T')[0];
-    const { data } = await supabase.from('absensi').select('*').eq('id_karyawan', userId).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).order('waktu_masuk', { ascending: false }).limit(1).single();
-    if (data) setTodayAbsen(data); else setTodayAbsen(null);
+    try {
+      const { mulai, sampai } = rentangPeriode('bulan_ini');
+      const rows = await ambilKehadiran({ mulai, sampai, idKaryawan: userId });
+      const hariIni = tanggalWIB();
+      setTodayAbsen(rows.find(r => r.tanggal === hariIni) || null);
+      const c = hitungStatus(rows);
+      setRekap({ masuk: c.Hadir + c.Late, izin: c.Izin + c.Sakit + c.Cuti, telat: c.Late, bolos: c.Bolos });
+    } catch (e) {
+      setMessage('Gagal memuat data: ' + e.message);
+    }
   };
+
+  useEffect(() => {
+    const checkSesi = async () => {
+      const savedKaryawan = localStorage.getItem('karyawan_data');
+      if (savedKaryawan) {
+        try {
+          const parsed = JSON.parse(savedKaryawan);
+          const { data, error } = await supabase.from('karyawan').select('id, is_approved').eq('id', parsed.id).single();
+          if (error || !data || !data.is_approved) {
+            localStorage.clear(); sessionStorage.clear(); setStep(1); return;
+          }
+          localStorage.setItem('karyawan_data', JSON.stringify(dataSesi(parsed)));
+          setKaryawan(dataSesi(parsed)); fetchDataHariIni(parsed.id); setStep(2);
+        } catch (e) { localStorage.clear(); setStep(1); }
+      }
+    };
+    checkSesi();
+
+    // Data untuk form Register: id departemen + daftar Business Manager
+    const fetchDept = async () => {
+      const [{ data: deptData }, { data: bmData }] = await Promise.all([
+        supabase.from('master_departemen').select('id, nama_departemen'),
+        supabase.from('karyawan').select('id, nama_lengkap').eq('jabatan', 'Business Manager').eq('is_approved', true).order('nama_lengkap'),
+      ]);
+      setDeptIdByName(Object.fromEntries((deptData || []).map(d => [d.nama_departemen, d.id])));
+      setDaftarBM(bmData || []);
+    };
+    fetchDept();
+
+    const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true); setMessage('');
@@ -94,42 +105,38 @@ export default function MobileScannerPage() {
     if (data.device_id && data.device_id !== currentDeviceId) { setMessage('Akses Ditolak: Terkunci di perangkat lain.'); setLoading(false); return; }
     if (!data.device_id) { await supabase.from('karyawan').update({ device_id: currentDeviceId }).eq('id', data.id); data.device_id = currentDeviceId; }
 
-    localStorage.setItem('karyawan_data', JSON.stringify(data));
-    setKaryawan(data); await fetchDataHariIni(data.id); setStep(2); setLoading(false);
+    localStorage.setItem('karyawan_data', JSON.stringify(dataSesi(data)));
+    setKaryawan(dataSesi(data)); await fetchDataHariIni(data.id); setStep(2); setLoading(false);
   };
 
   // =================== LOGIKA PENDAFTARAN (REGISTER) ===================
   const handleRegister = async (e) => {
     e.preventDefault(); setLoading(true); setMessage('');
 
-    if (!regForm.nama_lengkap || !regForm.id_departemen) {
-       setMessage('Nama Lengkap dan Divisi wajib diisi.'); setLoading(false); return;
+    const isMT = regType === 'MT';
+    if (!regForm.nama_lengkap.trim() || (isMT && !regForm.id_atasan) || (!isMT && !regForm.jabatan)) {
+       setMessage(isMT ? 'Nama Lengkap dan Business Manager wajib diisi.' : 'Nama Lengkap dan Jabatan wajib diisi.'); setLoading(false); return;
     }
 
-    // Generator NIP Acak & Username (mt/bo + nama depan/tengah bersih + 3 angka acak)
-    const randomNip = `REG${Date.now().toString().slice(-6)}`;
-    const randomStr = Math.floor(100 + Math.random() * 900);
-    const cleanName = regForm.nama_lengkap.toLowerCase().replace(/[^a-z]/g, '').substring(0, 6);
-    const generatedUsername = (regType === 'MT' ? 'mt' : 'bo') + cleanName + randomStr;
-
+    // NIP & username dibuat otomatis oleh database (format umum, tanpa kode jabatan)
     const payload = {
-      nip: randomNip,
-      nama_lengkap: regForm.nama_lengkap,
-      username: generatedUsername,
+      nama_lengkap: regForm.nama_lengkap.trim(),
       password: 'admin123',
-      id_departemen: regForm.id_departemen,
+      id_departemen: deptIdByName[isMT ? 'Marketing' : 'Backoffice'],
+      id_atasan: isMT ? regForm.id_atasan : null,
+      jabatan: isMT ? 'Marketing' : regForm.jabatan,
       role: 'Karyawan',
-      is_approved: true // Sesuai instruksi Anda agar bisa langsung login dan absen
+      is_approved: true // Sesuai instruksi agar bisa langsung login dan absen
     };
 
-    const { error } = await supabase.from('karyawan').insert([payload]);
+    const { data, error } = await supabase.from('karyawan').insert([payload]).select('username').single();
     
     if (error) { setMessage('Gagal mendaftar: ' + error.message); } 
     else {
-      alert(`PENDAFTARAN BERHASIL!\n\nUsername Anda: ${generatedUsername}\nPassword Default: admin123\n\nHarap simpan username ini untuk Login.`);
+      alert(`PENDAFTARAN BERHASIL!\n\nUsername Anda: ${data.username}\nPassword Default: admin123\n\nHarap simpan username ini untuk Login.`);
       // Langsung isikan ke form login agar karyawan mudah masuk
-      setForm({ username: generatedUsername, password: 'admin123' });
-      setRegForm({ nama_lengkap: '', id_departemen: '' });
+      setForm({ username: data.username, password: 'admin123' });
+      setRegForm({ nama_lengkap: '', id_atasan: '', jabatan: '' });
       setStep(1); // Lempar kembali ke halaman Login
     }
     setLoading(false);
@@ -157,27 +164,27 @@ export default function MobileScannerPage() {
       if (!qrData.startsWith('ABSENSI-KR-')) throw new Error('Kode QR tidak valid.');
       if ((Date.now() - parseInt(qrData.split('-')[2])) / 1000 > 60) throw new Error('Kode QR kedaluwarsa.');
 
-      const now = new Date();
-      const localTime = new Date(now.getTime() + (7 * 60 * 60000));
-      const currentHour = localTime.getUTCHours(); 
+      const currentHour = jamWIB();
 
       let jenisAbsen = '';
       if (currentHour >= 7 && currentHour < 12) jenisAbsen = 'MASUK';
       else if (currentHour >= 12 && currentHour <= 23) jenisAbsen = 'KELUAR';
       else throw new Error(`Di luar jam operasional (Terdeteksi jam ${currentHour}:00 WIB).`);
 
-      const todayStr = localTime.toISOString().split('T')[0];
+      const todayStr = tanggalWIB();
+      const { data: absenHariIni, error: errCek } = await supabase.from('absensi').select('id, waktu_keluar').eq('id_karyawan', karyawan.id).eq('tanggal', todayStr).maybeSingle();
+      if (errCek) throw errCek;
 
       if (jenisAbsen === 'MASUK') {
-        const { data: cekMasuk } = await supabase.from('absensi').select('id').eq('id_karyawan', karyawan.id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).single();
-        if (cekMasuk) throw new Error('Sudah absen MASUK hari ini.');
-        const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: new Date().toISOString(), status: currentHour > 8 ? 'Late' : 'Hadir' }]);
-        if (error) throw error; setMessage('BERHASIL ABSEN MASUK');
+        if (absenHariIni) throw new Error('Sudah absen MASUK hari ini.');
+        // Status Hadir/Late & tanggal dihitung oleh database (trigger fn_absensi_hitung)
+        const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: new Date().toISOString() }]);
+        if (error) throw (error.code === '23505' ? new Error('Sudah absen MASUK hari ini.') : error);
+        setMessage('BERHASIL ABSEN MASUK');
       } else {
-        const { data: dataMasuk } = await supabase.from('absensi').select('*').eq('id_karyawan', karyawan.id).gte('waktu_masuk', `${todayStr}T00:00:00+07:00`).order('waktu_masuk', { ascending: false }).limit(1);
-        if (!dataMasuk || dataMasuk.length === 0) throw new Error('Belum absen MASUK hari ini.');
-        if (dataMasuk[0].waktu_keluar) throw new Error('Sudah absen KELUAR hari ini.');
-        const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', dataMasuk[0].id);
+        if (!absenHariIni) throw new Error('Belum absen MASUK hari ini.');
+        if (absenHariIni.waktu_keluar) throw new Error('Sudah absen KELUAR hari ini.');
+        const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', absenHariIni.id);
         if (error) throw error; setMessage('BERHASIL ABSEN KELUAR');
       }
       fetchDataHariIni(karyawan.id); 
@@ -185,10 +192,7 @@ export default function MobileScannerPage() {
     setLoading(false);
   };
 
-  const formatJam = (isoStr) => {
-    if (!isoStr) return '-';
-    return new Date(isoStr).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  };
+  const formatJam = formatJamDetik;
 
   const handleLogout = () => { alert('Perangkat telah dikunci secara permanen pada sesi ini.'); };
 
@@ -230,7 +234,7 @@ export default function MobileScannerPage() {
             </div>
 
             <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg text-xs text-blue-700 mb-6 text-center">
-               Pendaftaran <b>{regType}</b> hanya memerlukan Nama Lengkap dan Pilihan Divisi/Team. Username dan Sandi otomatis dibuatkan.
+               {regType === 'MT' ? <>Pendaftaran <b>Marketing</b>: isi Nama Lengkap dan pilih Business Manager.</> : <>Pendaftaran <b>Backoffice</b>: isi Nama Lengkap dan Jabatan.</>} Username dan sandi dibuat otomatis.
             </div>
 
             <form onSubmit={handleRegister} className="space-y-4">
@@ -238,15 +242,23 @@ export default function MobileScannerPage() {
                  <label className="text-sm font-bold text-slate-700 mb-1 block">Nama Lengkap</label>
                  <input required type="text" placeholder="Masukkan nama Anda..." value={regForm.nama_lengkap} onChange={e => setRegForm({...regForm, nama_lengkap: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"/>
               </div>
-              <div>
-                 <label className="text-sm font-bold text-slate-700 mb-1 block">Divisi Team</label>
-                 <select required value={regForm.id_departemen} onChange={e => setRegForm({...regForm, id_departemen: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
-                    <option value="">Pilih Divisi Team</option>
-                    {departemenList.map(d => (
-                       <option key={d.id} value={d.id}>{d.nama_departemen} {d.leader_name ? `(Team ${d.leader_name})` : ''}</option>
-                    ))}
-                 </select>
-              </div>
+              {regType === 'MT' ? (
+                <div>
+                   <label className="text-sm font-bold text-slate-700 mb-1 block">Atasan (Business Manager)</label>
+                   <select required value={regForm.id_atasan} onChange={e => setRegForm({...regForm, id_atasan: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+                      <option value="">Pilih Business Manager</option>
+                      {daftarBM.map(b => <option key={b.id} value={b.id}>{b.nama_lengkap}</option>)}
+                   </select>
+                </div>
+              ) : (
+                <div>
+                   <label className="text-sm font-bold text-slate-700 mb-1 block">Jabatan</label>
+                   <select required value={regForm.jabatan} onChange={e => setRegForm({...regForm, jabatan: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+                      <option value="">Pilih Jabatan</option>
+                      {JABATAN_BACKOFFICE.map(j => <option key={j} value={j}>{j}</option>)}
+                   </select>
+                </div>
+              )}
               {message && <div className="p-3 bg-rose-50 text-rose-600 text-xs font-bold rounded-lg border border-rose-200">{message}</div>}
               <button disabled={loading} type="submit" className="w-full bg-blue-600 text-white font-extrabold py-3.5 rounded-xl hover:bg-blue-700 transition mt-6 shadow-md">{loading ? 'Memproses...' : 'Daftar Akun Baru'}</button>
             </form>
@@ -286,9 +298,10 @@ export default function MobileScannerPage() {
              <div className="w-full bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-12">
                <div className="text-center mb-6">
                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Status Hari Ini</p>
-                 <p className={`font-black text-xl tracking-wide ${todayAbsen?.status === 'Hadir' ? 'text-blue-600' : todayAbsen?.status === 'Late' ? 'text-amber-500' : 'text-slate-400'}`}>
-                   {todayAbsen?.status || 'Belum Absen'}
-                 </p>
+                 <span className={`inline-block px-3 py-1 rounded-lg border font-black text-lg tracking-wide ${(STATUS_KEHADIRAN[todayAbsen?.status] || STATUS_KEHADIRAN['Belum Absen']).cls}`}>
+                   {(STATUS_KEHADIRAN[todayAbsen?.status] || STATUS_KEHADIRAN['Belum Absen']).label}
+                 </span>
+                 {todayAbsen?.keterangan && <p className="text-xs text-slate-500 mt-2">{todayAbsen.keterangan}</p>}
                </div>
                <div className="flex justify-between text-center divide-x divide-slate-100">
                  <div className="flex-1">
@@ -327,10 +340,10 @@ export default function MobileScannerPage() {
                    <p className="text-[10px] font-bold bg-slate-100 px-3 py-1.5 rounded-full text-slate-500">Bulan Ini</p>
                 </div>
                 <div className="grid grid-cols-4 gap-3 text-center text-xs font-bold">
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Masuk</p><p className="text-base text-blue-600">0</p></div>
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Izin</p><p className="text-base text-slate-700">0</p></div>
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Telat</p><p className="text-amber-500 text-base">0</p></div>
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Bolos</p><p className="text-rose-600 text-base">0</p></div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Masuk</p><p className="text-base text-blue-600">{rekap.masuk}</p></div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Izin</p><p className="text-base text-slate-700">{rekap.izin}</p></div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Telat</p><p className="text-amber-500 text-base">{rekap.telat}</p></div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Bolos</p><p className="text-rose-600 text-base">{rekap.bolos}</p></div>
                 </div>
              </div>
           </div>
