@@ -4,18 +4,42 @@ import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
 import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus } from 'lucide-react';
 import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
-import { ambilKehadiran, hitungStatus, STATUS_KEHADIRAN, JABATAN_BACKOFFICE } from '@/utils/kehadiran';
+import { hitungStatus, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
+import { ambilToken, simpanToken, hapusToken, kodeError } from '@/utils/sesi';
 import { useFeedback } from '@/components/Feedback';
 import Image from 'next/image';
 
-// Data karyawan yang aman disimpan di HP (tanpa password)
-const dataSesi = (k) => ({ id: k.id, nama_lengkap: k.nama_lengkap, nip: k.nip, username: k.username });
+// Pesan untuk kode error dari fungsi database (fn_login_karyawan, fn_absen, ...)
+const PESAN_KODE = {
+  LOGIN_SALAH: 'Username atau password tidak cocok. Periksa lagi, lalu coba masuk.',
+  AKUN_NONAKTIF: 'Akun ini sudah dinonaktifkan. Hubungi admin kalau menurutmu ini keliru.',
+  BELUM_DISETUJUI: 'Akunmu belum disetujui admin. Hubungi admin untuk mengaktifkannya.',
+  HP_LAIN: 'Akun ini terkunci di HP lain. Minta admin melepas HP lama supaya kamu bisa masuk dari HP ini.',
+  DEVICE_KOSONG: 'Browser ini menolak penyimpanan data. Matikan mode penyamaran, lalu coba lagi.',
+  NAMA_KOSONG: 'Isi nama lengkap minimal 2 huruf.',
+};
+const HASIL_GAGAL = {
+  QR_TIDAK_DIKENAL: ['QR tidak dikenali', 'QR ini bukan QR absensi. Pindai QR yang tampil di layar presensi kantor.'],
+  QR_KEDALUWARSA: ['QR sudah kedaluwarsa', 'QR di layar presensi berganti tiap 10 detik. Pindai QR yang sedang tampil sekarang.'],
+  BELUM_BUKA: ['Absen belum dibuka', 'Absen dibuka mulai jam 07.00 WIB.'],
+  SUDAH_MASUK: ['Kamu sudah absen masuk', 'Absen masuk hari ini sudah tercatat. Absen pulang dibuka mulai jam 12.00 WIB.'],
+  SUDAH_PULANG: ['Kamu sudah absen pulang', 'Absen pulang hari ini sudah tercatat. Sampai jumpa besok.'],
+  SESI_HABIS: ['Sesi berakhir', 'Login lagi untuk melanjutkan absen.'],
+};
+
+function ambilDeviceId() {
+  try {
+    let id = localStorage.getItem('device_id');
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem('device_id', id); }
+    return id;
+  } catch { return ''; }
+}
 
 export default function MobileScannerPage() {
   // Step 0: Register, Step 1: Login, Step 2: Dashboard, Step 3: Kamera, Step 4: Status
-  const [step, setStep] = useState(1); 
-  
+  const [step, setStep] = useState(1);
+
   const [form, setForm] = useState({ username: '', password: '' });
   const [karyawan, setKaryawan] = useState(null);
   const [todayAbsen, setTodayAbsen] = useState(null);
@@ -23,13 +47,12 @@ export default function MobileScannerPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [hasilScan, setHasilScan] = useState(null); // { sukses, judul, pesan }
-  const { info } = useFeedback();
-  
+  const { info, konfirmasi } = useFeedback();
+
   // State Registrasi
   const [regType, setRegType] = useState('MT'); // 'MT' atau 'BO'
-  const [regForm, setRegForm] = useState({ nama_lengkap: '', id_atasan: '', jabatan: '' });
-  const [deptIdByName, setDeptIdByName] = useState({});
-  const [daftarBM, setDaftarBM] = useState([]);
+  const [regForm, setRegForm] = useState({ nama_lengkap: '', id_atasan: '', jabatan: '', id_lokasi: '' });
+  const [opsi, setOpsi] = useState({ atasan: [], jabatan: [], lokasi: [] });
 
   const html5QrCodeRef = useRef(null);
   const [cameraMode, setCameraMode] = useState('environment');
@@ -53,54 +76,44 @@ export default function MobileScannerPage() {
     }
   };
 
-  const fetchDataHariIni = async (userId) => {
-    const { data: cekUser } = await supabase.from('karyawan').select('device_id').eq('id', userId).single();
-    const localDeviceId = localStorage.getItem('device_id');
-    
-    if (!cekUser?.device_id || cekUser.device_id !== localDeviceId) {
-      info({ judul: 'Silakan login ulang', pesan: 'Admin melepas akunmu dari HP ini. Login lagi supaya akunmu terkunci ke HP yang sedang kamu pakai.' });
-      localStorage.clear(); sessionStorage.clear(); setKaryawan(null); setStep(1); return;
-    }
+  const keluarSesi = (pesan) => {
+    hapusToken('karyawan');
+    try { localStorage.removeItem('karyawan_data'); } catch { /* abaikan */ }
+    setKaryawan(null); setTodayAbsen(null); setStep(1);
+    if (pesan) info({ judul: 'Silakan login lagi', pesan });
+  };
 
-    try {
-      const { mulai, sampai } = rentangPeriode('bulan_ini');
-      const rows = await ambilKehadiran({ mulai, sampai, idKaryawan: userId });
-      const hariIni = tanggalWIB();
-      setTodayAbsen(rows.find(r => r.tanggal === hariIni) || null);
-      const c = hitungStatus(rows);
-      setRekap({ masuk: c.Hadir + c.Late, izin: c.Izin + c.Sakit + c.Cuti, telat: c.Late, bolos: c.Bolos });
-    } catch (e) {
-      setMessage(`Data absensimu belum bisa dimuat. ${pesanError(e)}`);
+  const fetchDataHariIni = async () => {
+    const { mulai, sampai } = rentangPeriode('bulan_ini');
+    const { data, error } = await supabase.rpc('fn_kehadiran_saya', { p_mulai: mulai, p_sampai: sampai });
+    if (error) {
+      if (kodeError(error) === 'SESI_HABIS') { keluarSesi('Admin melepas HP ini atau menonaktifkan akunmu. Login lagi kalau akunmu masih aktif.'); return; }
+      setMessage(`Data absensimu belum bisa dimuat. ${pesanError(error)}`);
+      return;
     }
+    const rows = data || [];
+    const hariIni = tanggalWIB();
+    setTodayAbsen(rows.find(r => String(r.tanggal).slice(0, 10) === hariIni) || null);
+    const c = hitungStatus(rows);
+    setRekap({ masuk: c.Hadir + c.Late, izin: c.Izin + c.Sakit + c.Cuti, telat: c.Late, bolos: c.Bolos });
   };
 
   useEffect(() => {
+    // Lanjutkan sesi yang tersimpan di HP
     const checkSesi = async () => {
-      const savedKaryawan = localStorage.getItem('karyawan_data');
-      if (savedKaryawan) {
-        try {
-          const parsed = JSON.parse(savedKaryawan);
-          const { data, error } = await supabase.from('karyawan').select('id, is_approved').eq('id', parsed.id).single();
-          if (error || !data || !data.is_approved) {
-            localStorage.clear(); sessionStorage.clear(); setStep(1); return;
-          }
-          localStorage.setItem('karyawan_data', JSON.stringify(dataSesi(parsed)));
-          setKaryawan(dataSesi(parsed)); fetchDataHariIni(parsed.id); setStep(2);
-        } catch (e) { localStorage.clear(); setStep(1); }
-      }
+      if (!ambilToken('karyawan')) return;
+      const { data, error } = await supabase.rpc('fn_sesi_karyawan');
+      if (error || !data) { keluarSesi(); return; }
+      setKaryawan(data); setStep(2); fetchDataHariIni();
     };
     checkSesi();
 
-    // Data untuk form Register: id departemen + daftar Business Manager
-    const fetchDept = async () => {
-      const [{ data: deptData }, { data: bmData }] = await Promise.all([
-        supabase.from('master_departemen').select('id, nama_departemen'),
-        supabase.from('karyawan').select('id, nama_lengkap').eq('jabatan', 'Business Manager').eq('is_approved', true).order('nama_lengkap'),
-      ]);
-      setDeptIdByName(Object.fromEntries((deptData || []).map(d => [d.nama_departemen, d.id])));
-      setDaftarBM(bmData || []);
+    // Pilihan untuk form daftar
+    const fetchOpsi = async () => {
+      const { data } = await supabase.rpc('fn_opsi_registrasi');
+      if (data) setOpsi(data);
     };
-    fetchDept();
+    fetchOpsi();
 
     const handleBeforeInstallPrompt = (e) => { e.preventDefault(); setDeferredPrompt(e); };
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -111,42 +124,35 @@ export default function MobileScannerPage() {
 
   const handleLogin = async (e) => {
     e.preventDefault(); setLoading(true); setMessage('');
-    const { data, error } = await supabase.from('karyawan').select('*').eq('username', form.username).eq('password', form.password).single();
-    if (error || !data) { setMessage('Username atau password tidak cocok. Periksa lagi, lalu coba masuk.'); setLoading(false); return; }
-    if (!data.is_approved) { setMessage('Akunmu belum disetujui admin. Hubungi admin untuk mengaktifkannya.'); setLoading(false); return; }
-
-    let currentDeviceId = localStorage.getItem('device_id');
-    if (!currentDeviceId) { currentDeviceId = crypto.randomUUID(); localStorage.setItem('device_id', currentDeviceId); }
-    if (data.device_id && data.device_id !== currentDeviceId) { setMessage('Akun ini terkunci di HP lain. Minta admin melepas HP lama supaya kamu bisa masuk dari HP ini.'); setLoading(false); return; }
-    if (!data.device_id) { await supabase.from('karyawan').update({ device_id: currentDeviceId }).eq('id', data.id); data.device_id = currentDeviceId; }
-
-    localStorage.setItem('karyawan_data', JSON.stringify(dataSesi(data)));
-    setKaryawan(dataSesi(data)); await fetchDataHariIni(data.id); setStep(2); setLoading(false);
+    const { data, error } = await supabase.rpc('fn_login_karyawan', {
+      p_username: form.username, p_password: form.password, p_device_id: ambilDeviceId(),
+    });
+    if (error) { setMessage(PESAN_KODE[kodeError(error)] || pesanError(error)); setLoading(false); return; }
+    simpanToken('karyawan', data.token);
+    setKaryawan(data.karyawan); await fetchDataHariIni(); setStep(2); setLoading(false);
   };
 
   // =================== LOGIKA PENDAFTARAN (REGISTER) ===================
+  const isMT = regType === 'MT';
+  const deptDaftar = isMT ? 'Marketing' : 'Backoffice';
+  const jabatanDaftar = opsi.jabatan.filter(j => j.departemen === deptDaftar);
+
   const handleRegister = async (e) => {
     e.preventDefault(); setLoading(true); setMessage('');
-
-    const isMT = regType === 'MT';
-    if (!regForm.nama_lengkap.trim() || (isMT && !regForm.id_atasan) || (!isMT && !regForm.jabatan)) {
-       setMessage(isMT ? 'Isi nama lengkap dan pilih Business Manager kamu.' : 'Isi nama lengkap dan pilih jabatan kamu.'); setLoading(false); return;
+    const jabatan = regForm.jabatan || (jabatanDaftar.length === 1 ? jabatanDaftar[0].nama : '');
+    const idLokasi = regForm.id_lokasi || (opsi.lokasi.length === 1 ? opsi.lokasi[0].id : '');
+    if (!regForm.nama_lengkap.trim() || !jabatan || !idLokasi || (isMT && !regForm.id_atasan)) {
+      setMessage(isMT ? 'Isi nama lengkap, lalu pilih atasan dan lokasi kerja.' : 'Isi nama lengkap, lalu pilih jabatan dan lokasi kerja.');
+      setLoading(false); return;
     }
 
-    // NIP & username dibuat otomatis oleh database (format umum, tanpa kode jabatan)
-    const payload = {
-      nama_lengkap: regForm.nama_lengkap.trim(),
-      password: 'admin123',
-      id_departemen: deptIdByName[isMT ? 'Marketing' : 'Backoffice'],
-      id_atasan: isMT ? regForm.id_atasan : null,
-      jabatan: isMT ? 'Marketing' : regForm.jabatan,
-      role: 'Karyawan',
-      is_approved: true // Sesuai instruksi agar bisa langsung login dan absen
-    };
+    // NIP & username dibuat otomatis oleh database
+    const { data, error } = await supabase.rpc('fn_register_karyawan', {
+      p_nama: regForm.nama_lengkap.trim(), p_departemen: deptDaftar, p_jabatan: jabatan,
+      p_id_atasan: isMT ? regForm.id_atasan : null, p_id_lokasi: idLokasi,
+    });
 
-    const { data, error } = await supabase.from('karyawan').insert([payload]).select('username').single();
-    
-    if (error) { setMessage(`Pendaftaran belum berhasil. ${pesanError(error)}`); } 
+    if (error) { setMessage(`Pendaftaran belum berhasil. ${PESAN_KODE[kodeError(error)] || pesanError(error)}`); }
     else {
       await info({
         judul: 'Pendaftaran berhasil', nada: 'sukses', tombolYa: 'Lanjut login',
@@ -160,10 +166,9 @@ export default function MobileScannerPage() {
           </div>
         ),
       });
-      // Langsung isikan ke form login agar karyawan mudah masuk
       setForm({ username: data.username, password: 'admin123' });
-      setRegForm({ nama_lengkap: '', id_atasan: '', jabatan: '' });
-      setStep(1); // Lempar kembali ke halaman Login
+      setRegForm({ nama_lengkap: '', id_atasan: '', jabatan: '', id_lokasi: '' });
+      setStep(1);
     }
     setLoading(false);
   };
@@ -175,7 +180,7 @@ export default function MobileScannerPage() {
       html5QrCodeRef.current = html5QrCode;
       await html5QrCode.start(
         { facingMode: mode }, { fps: 10, qrbox: { width: 250, height: 250 } },
-        async (decodedText) => { await html5QrCode.stop().catch(() => {}); await prosesAbsensi(decodedText); }, () => {} 
+        async (decodedText) => { await html5QrCode.stop().catch(() => {}); await prosesAbsensi(decodedText); }, () => {}
       );
     } catch { setMessage('Kamera belum bisa dibuka. Izinkan akses kamera untuk situs ini di pengaturan browser, lalu coba lagi.'); }
   };
@@ -184,60 +189,48 @@ export default function MobileScannerPage() {
   const toggleCamera = () => { const newMode = cameraMode === 'environment' ? 'user' : 'environment'; setCameraMode(newMode); startCamera(newMode); };
   const batalScanner = async () => { if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) { await html5QrCodeRef.current.stop().catch(() => {}); html5QrCodeRef.current.clear(); } setStep(2); };
 
+  // QR, jam, dan status divalidasi oleh database (fn_absen), bukan oleh HP
   const prosesAbsensi = async (qrData) => {
     setLoading(true); setHasilScan(null); setStep(4);
-    const gagal = (judul, pesan) => { const e = new Error(pesan); e.judul = judul; return e; };
-    try {
-      if (!qrData.startsWith('ABSENSI-KR-')) throw gagal('QR tidak dikenali', 'QR ini bukan QR absensi. Pindai QR yang tampil di layar kiosk.');
-      if ((Date.now() - parseInt(qrData.split('-')[2])) / 1000 > 60) throw gagal('QR sudah kedaluwarsa', 'QR di kiosk berganti tiap beberapa detik. Pindai QR yang sedang tampil sekarang.');
-
-      const currentHour = jamWIB();
-
-      let jenisAbsen = '';
-      if (currentHour >= 7 && currentHour < 12) jenisAbsen = 'MASUK';
-      else if (currentHour >= 12 && currentHour <= 23) jenisAbsen = 'KELUAR';
-      else throw gagal('Absen belum dibuka', `Absen dibuka mulai jam 07.00 WIB. Sekarang jam ${String(currentHour).padStart(2, '0')}.xx WIB.`);
-
-      const todayStr = tanggalWIB();
-      const { data: absenHariIni, error: errCek } = await supabase.from('absensi').select('id, waktu_keluar').eq('id_karyawan', karyawan.id).eq('tanggal', todayStr).maybeSingle();
-      if (errCek) throw errCek;
-
-      if (jenisAbsen === 'MASUK') {
-        if (absenHariIni) throw gagal('Kamu sudah absen masuk', 'Absen masuk hari ini sudah tercatat. Absen pulang dibuka mulai jam 12.00 WIB.');
-        // Status Hadir/Late & tanggal dihitung oleh database (trigger fn_absensi_hitung)
-        const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: new Date().toISOString() }]);
-        if (error) throw (error.code === '23505' ? gagal('Kamu sudah absen masuk', 'Absen masuk hari ini sudah tercatat. Absen pulang dibuka mulai jam 12.00 WIB.') : error);
-        setHasilScan({ sukses: true, judul: 'Absen masuk tercatat', pesan: `Jam ${formatJamDetik(new Date().toISOString())} WIB. Selamat bekerja.` });
-      } else {
-        if (absenHariIni?.waktu_keluar) throw gagal('Kamu sudah absen pulang', 'Absen pulang hari ini sudah tercatat. Sampai jumpa besok.');
-        if (absenHariIni) {
-          const { error } = await supabase.from('absensi').update({ waktu_keluar: new Date().toISOString() }).eq('id', absenHariIni.id);
-          if (error) throw error;
-        } else {
-          // Tidak absen masuk: tetap dicatat absen keluar, status otomatis Terlambat (trigger DB)
-          const { error } = await supabase.from('absensi').insert([{ id_karyawan: karyawan.id, waktu_masuk: null, waktu_keluar: new Date().toISOString() }]);
-          if (error) throw (error.code === '23505' ? gagal('Kamu sudah absen pulang', 'Absen pulang hari ini sudah tercatat. Sampai jumpa besok.') : error);
-        }
-        setHasilScan({
-          sukses: true, judul: 'Absen pulang tercatat',
-          pesan: absenHariIni
-            ? `Jam ${formatJamDetik(new Date().toISOString())} WIB. Terima kasih untuk hari ini.`
-            : `Jam ${formatJamDetik(new Date().toISOString())} WIB. Hari ini kamu tidak absen masuk, jadi statusmu tercatat Terlambat.`,
-        });
-      }
-      fetchDataHariIni(karyawan.id); 
-    } catch (error) {
-      setHasilScan({ sukses: false, judul: error.judul || 'Absen belum tercatat', pesan: error.judul ? error.message : pesanError(error) });
+    const { data, error } = await supabase.rpc('fn_absen', { p_qr: qrData });
+    if (error) {
+      const kode = kodeError(error);
+      const [judul, pesan] = HASIL_GAGAL[kode] || ['Absen belum tercatat', pesanError(error)];
+      setHasilScan({ sukses: false, judul, pesan });
+      setLoading(false);
+      if (kode === 'SESI_HABIS') keluarSesi('Sesimu berakhir. Login lagi untuk absen.');
+      return;
     }
+    const jam = formatJamDetik(data.waktu);
+    if (data.jenis === 'MASUK') {
+      setHasilScan({
+        sukses: true, judul: 'Absen masuk tercatat',
+        pesan: data.status === 'Late' ? `Jam ${jam} WIB. Kamu terlambat ${data.telat_menit} menit.` : `Jam ${jam} WIB. Selamat bekerja.`,
+      });
+    } else {
+      setHasilScan({
+        sukses: true, judul: 'Absen pulang tercatat',
+        pesan: data.tanpa_masuk
+          ? `Jam ${jam} WIB. Hari ini kamu tidak absen masuk, jadi statusmu tercatat Terlambat.`
+          : `Jam ${jam} WIB. Terima kasih untuk hari ini.`,
+      });
+    }
+    fetchDataHariIni();
     setLoading(false);
   };
 
   const formatJam = formatJamDetik;
 
-  const handleLogout = () => info({
-    judul: 'Akunmu terkunci di HP ini',
-    pesan: 'Kamu tidak perlu logout. Kalau mau pindah HP, minta admin melepas HP ini dari akunmu.',
-  });
+  const handleLogout = async () => {
+    const ok = await konfirmasi({
+      judul: 'Keluar dari aplikasi?',
+      pesan: 'Akunmu tetap terkunci di HP ini. Kamu bisa login lagi kapan saja dari HP yang sama.',
+      tombolYa: 'Keluar',
+    });
+    if (!ok) return;
+    await supabase.rpc('fn_logout', { p_jenis: 'karyawan' });
+    keluarSesi();
+  };
 
   const isSelesai = !!todayAbsen?.waktu_keluar;
   // Sebelum 12:00 dan belum ada data -> Check In; setelahnya -> Check Out (boleh tanpa absen masuk)
@@ -273,12 +266,12 @@ export default function MobileScannerPage() {
             <p className="text-center text-sm text-slate-500 mb-6">Pendaftaran akun pengguna baru.</p>
             
             <div className="flex bg-slate-100 p-1 rounded-xl mb-6 shadow-inner">
-               <button onClick={() => setRegType('MT')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'MT' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar MT</button>
-               <button onClick={() => setRegType('BO')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'BO' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar BO / Manager</button>
+               <button onClick={() => { setRegType('MT'); setRegForm({ ...regForm, jabatan: '' }); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'MT' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar MT</button>
+               <button onClick={() => { setRegType('BO'); setRegForm({ ...regForm, jabatan: '' }); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'BO' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar BO / Manager</button>
             </div>
 
             <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg text-xs text-blue-700 mb-6 text-center">
-               {regType === 'MT' ? <>Pendaftaran <b>Marketing</b>: isi Nama Lengkap dan pilih Business Manager.</> : <>Pendaftaran <b>Backoffice</b>: isi Nama Lengkap dan Jabatan.</>} Username dan sandi dibuat otomatis.
+               {regType === 'MT' ? <>Pendaftaran <b>Marketing</b>: isi nama, lalu pilih atasan dan lokasi kerja.</> : <>Pendaftaran <b>Backoffice</b>: isi nama, lalu pilih jabatan dan lokasi kerja.</>} Username dan sandi dibuat otomatis.
             </div>
 
             <form onSubmit={handleRegister} className="space-y-4">
@@ -286,20 +279,30 @@ export default function MobileScannerPage() {
                  <label className="text-sm font-bold text-slate-700 mb-1 block">Nama Lengkap</label>
                  <input required type="text" placeholder="Masukkan nama Anda..." value={regForm.nama_lengkap} onChange={e => setRegForm({...regForm, nama_lengkap: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm"/>
               </div>
-              {regType === 'MT' ? (
-                <div>
-                   <label className="text-sm font-bold text-slate-700 mb-1 block">Atasan (Business Manager)</label>
-                   <select required value={regForm.id_atasan} onChange={e => setRegForm({...regForm, id_atasan: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
-                      <option value="">Pilih Business Manager</option>
-                      {daftarBM.map(b => <option key={b.id} value={b.id}>{b.nama_lengkap}</option>)}
-                   </select>
-                </div>
-              ) : (
+              {jabatanDaftar.length > 1 && (
                 <div>
                    <label className="text-sm font-bold text-slate-700 mb-1 block">Jabatan</label>
                    <select required value={regForm.jabatan} onChange={e => setRegForm({...regForm, jabatan: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
-                      <option value="">Pilih Jabatan</option>
-                      {JABATAN_BACKOFFICE.map(j => <option key={j} value={j}>{j}</option>)}
+                      <option value="">Pilih jabatan</option>
+                      {jabatanDaftar.map(j => <option key={j.nama} value={j.nama}>{j.nama}</option>)}
+                   </select>
+                </div>
+              )}
+              {isMT && (
+                <div>
+                   <label className="text-sm font-bold text-slate-700 mb-1 block">Atasan</label>
+                   <select required value={regForm.id_atasan} onChange={e => setRegForm({...regForm, id_atasan: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+                      <option value="">Pilih atasan</option>
+                      {opsi.atasan.map(b => <option key={b.id} value={b.id}>{b.nama_lengkap}</option>)}
+                   </select>
+                </div>
+              )}
+              {opsi.lokasi.length > 1 && (
+                <div>
+                   <label className="text-sm font-bold text-slate-700 mb-1 block">Lokasi kerja</label>
+                   <select required value={regForm.id_lokasi} onChange={e => setRegForm({...regForm, id_lokasi: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+                      <option value="">Pilih lokasi</option>
+                      {opsi.lokasi.map(l => <option key={l.id} value={l.id}>{l.nama}</option>)}
                    </select>
                 </div>
               )}

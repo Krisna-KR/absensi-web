@@ -152,6 +152,7 @@ export default function KehadiranPage() {
                         <span className="font-mono">{r.nip}</span>
                         {r.jabatan && <span> · {r.jabatan}</span>}
                         {r.nama_atasan && <span> · Tim {r.nama_atasan}</span>}
+                        {r.nama_lokasi && <span> · {r.nama_lokasi}</span>}
                       </p>
                     </td>
                     <td className="px-6 py-3 text-slate-700">{formatTanggal(r.tanggal)}</td>

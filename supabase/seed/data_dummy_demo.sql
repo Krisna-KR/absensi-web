@@ -2,28 +2,33 @@
 -- DATA DUMMY DEMO: 20 karyawan + absensi & izin 1 Jan 2026 s/d hari ini
 -- Semua karyawan demo memakai email demo-...@absensi.demo
 -- supaya bisa dihapus bersih lewat data_dummy_hapus.sql.
--- Jalankan SEKALI di Supabase SQL Editor (setelah kedua migrasi).
+-- Jalankan SEKALI di Supabase SQL Editor (setelah migrasi 1, 2, dan 3).
+-- Lokasi: tim Hendra & IT di Malang, tim Sari & Admin di Surabaya, tim Agus campuran.
 -- =====================================================================
 BEGIN;
 
 SELECT setseed(0.2026);
 
 -- ---------- 1. Karyawan Backoffice ----------
-INSERT INTO karyawan (nama_lengkap, email, id_departemen, jabatan, password, role, is_approved, created_at)
+INSERT INTO karyawan (nama_lengkap, email, id_departemen, jabatan, id_lokasi, password, role, is_approved, created_at)
 SELECT v.nama, v.email, (SELECT id FROM master_departemen WHERE nama_departemen = 'Backoffice'),
-       v.jabatan, 'admin123', 'Karyawan', true, timestamptz '2026-01-01 08:00+07'
+       v.jabatan, (SELECT id FROM master_lokasi WHERE nama_cabang = v.lokasi), 'admin123', 'Karyawan', true, timestamptz '2026-01-01 08:00+07'
 FROM (VALUES
-  ('Hendra Wijaya',    'demo-bm1@absensi.demo', 'Business Manager'),
-  ('Sari Puspitasari', 'demo-bm2@absensi.demo', 'Business Manager'),
-  ('Agus Santoso',     'demo-bm3@absensi.demo', 'Business Manager'),
-  ('Dewi Lestari',     'demo-it1@absensi.demo', 'IT'),
-  ('Rudi Hartono',     'demo-ad1@absensi.demo', 'Admin')
-) AS v(nama, email, jabatan);
+  ('Hendra Wijaya',    'demo-bm1@absensi.demo', 'Business Manager', 'Malang'),
+  ('Sari Puspitasari', 'demo-bm2@absensi.demo', 'Business Manager', 'Surabaya'),
+  ('Agus Santoso',     'demo-bm3@absensi.demo', 'Business Manager', 'Malang'),
+  ('Dewi Lestari',     'demo-it1@absensi.demo', 'IT',               'Malang'),
+  ('Rudi Hartono',     'demo-ad1@absensi.demo', 'Admin',            'Surabaya')
+) AS v(nama, email, jabatan, lokasi);
 
 -- ---------- 2. Karyawan Marketing (masing-masing di bawah 1 BM) ----------
-INSERT INTO karyawan (nama_lengkap, email, id_departemen, jabatan, id_atasan, password, role, is_approved, created_at)
+INSERT INTO karyawan (nama_lengkap, email, id_departemen, jabatan, id_atasan, id_lokasi, password, role, is_approved, created_at)
 SELECT v.nama, v.email, (SELECT id FROM master_departemen WHERE nama_departemen = 'Marketing'),
-       'Marketing', (SELECT id FROM karyawan WHERE email = v.bm), 'admin123', 'Karyawan', true, timestamptz '2026-01-01 08:00+07'
+       'Marketing', (SELECT id FROM karyawan WHERE email = v.bm),
+       (SELECT id FROM master_lokasi WHERE nama_cabang =
+          CASE WHEN v.bm = 'demo-bm2@absensi.demo' OR v.email IN ('demo-mk14@absensi.demo', 'demo-mk15@absensi.demo')
+               THEN 'Surabaya' ELSE 'Malang' END),
+       'admin123', 'Karyawan', true, timestamptz '2026-01-01 08:00+07'
 FROM (VALUES
   ('Rina Kartika',     'demo-mk01@absensi.demo', 'demo-bm1@absensi.demo'),
   ('Bayu Pratama',     'demo-mk02@absensi.demo', 'demo-bm1@absensi.demo'),
@@ -62,7 +67,7 @@ FROM k
 CROSS JOIN generate_series(date '2026-01-01', (now() AT TIME ZONE 'Asia/Jakarta')::date, interval '1 day') d
 JOIN bulan b ON b.m = extract(month FROM d)
 WHERE extract(isodow FROM d) < 6
-  AND NOT EXISTS (SELECT 1 FROM master_libur l WHERE l.tanggal = d::date);
+  ;
 
 ALTER TABLE tmp_demo ADD COLUMN hasil text;
 UPDATE tmp_demo SET hasil = CASE

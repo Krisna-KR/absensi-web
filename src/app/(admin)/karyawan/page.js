@@ -1,14 +1,16 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, Search, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp } from 'lucide-react';
+import { Plus, Search, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp, UserX, UserCheck, MapPin } from 'lucide-react';
 import { tanggalWIB, jamMenitWIB, formatTanggal, formatTanggalWaktu } from '@/utils/waktu';
-import { JABATAN_BACKOFFICE, STATUS_KEHADIRAN } from '@/utils/kehadiran';
+import { STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
 import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
 
-const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '' };
+const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '' };
+// Kolom password tidak bisa dibaca lewat API, jadi kolom disebut satu per satu
+const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at';
 const JENIS_MANUAL = [
   { v: 'Hadir', l: 'Hadir (input jam masuk / pulang)' },
   { v: 'Izin', l: 'Izin (kepentingan pribadi)' },
@@ -34,6 +36,9 @@ const Modal = ({ judul, onClose, children, lebar = 'max-w-md' }) => (
 export default function KaryawanPage() {
   const [karyawan, setKaryawan] = useState([]);
   const [departemen, setDepartemen] = useState([]);
+  const [jabatanList, setJabatanList] = useState([]);
+  const [lokasiList, setLokasiList] = useState([]);
+  const [lihatNonaktif, setLihatNonaktif] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast, konfirmasi, info } = useFeedback();
   const [cari, setCari] = useState('');
@@ -60,35 +65,44 @@ export default function KaryawanPage() {
   useEffect(() => {
     let batal = false;
     (async () => {
-      const [{ data: deptData }, { data: karData }] = await Promise.all([
+      const [{ data: deptData }, { data: jabData }, { data: lokData }, { data: karData, error }] = await Promise.all([
         supabase.from('master_departemen').select('id, nama_departemen'),
-        supabase.from('karyawan').select('*').order('created_at', { ascending: false }),
+        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan').order('nama'),
+        supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang'),
+        supabase.from('karyawan').select(KOLOM_KARYAWAN).order('created_at', { ascending: false }),
       ]);
       if (batal) return;
-      setDepartemen(deptData || []); setKaryawan(karData || []);
+      if (error) toast(`Data karyawan belum bisa dimuat. ${pesanError(error)}`, 'gagal');
+      setDepartemen(deptData || []); setJabatanList(jabData || []); setLokasiList(lokData || []); setKaryawan(karData || []);
     })();
     return () => { batal = true; };
-  }, [versi]);
+  }, [versi, toast]);
 
   // =================== HELPER STRUKTUR ===================
   const deptById = useMemo(() => Object.fromEntries(departemen.map(d => [d.id, d.nama_departemen])), [departemen]);
   const deptIdByName = useMemo(() => Object.fromEntries(departemen.map(d => [d.nama_departemen, d.id])), [departemen]);
   const karById = useMemo(() => Object.fromEntries(karyawan.map(k => [k.id, k])), [karyawan]);
   const namaDept = (k) => deptById[k?.id_departemen] || '';
-  const bawahanOf = (id) => karyawan.filter(k => k.id_atasan === id);
+  const bawahanOf = (id) => karyawan.filter(k => k.id_atasan === id && k.is_aktif);
+  const lokasiById = useMemo(() => Object.fromEntries(lokasiList.map(l => [l.id, l.nama_cabang])), [lokasiList]);
+  const jabatanAtasan = useMemo(() => new Set(jabatanList.filter(j => j.bisa_jadi_atasan).map(j => j.nama)), [jabatanList]);
+  const jabatanDept = (dept) => jabatanList.filter(j => j.id_departemen === deptIdByName[dept]);
+  const jumlahAktif = karyawan.filter(k => k.is_aktif).length;
+  const jumlahNonaktif = karyawan.length - jumlahAktif;
   // Pencarian & urutan tabel
   const daftarTampil = useMemo(() => {
     const q = cari.trim().toLowerCase();
     const namaAtasan = (k) => karById[k.id_atasan]?.nama_lengkap || '';
-    const rows = q ? karyawan.filter(k => [k.nama_lengkap, k.nip, k.username, namaAtasan(k), k.jabatan].some(v => v?.toLowerCase().includes(q))) : karyawan;
+    const sesuaiStatus = karyawan.filter(k => (lihatNonaktif ? !k.is_aktif : k.is_aktif));
+    const rows = q ? sesuaiStatus.filter(k => [k.nama_lengkap, k.nip, k.username, namaAtasan(k), k.jabatan, lokasiById[k.id_lokasi]].some(v => v?.toLowerCase().includes(q))) : sesuaiStatus;
     return urutkan(rows, urut, {
       nama: k => k.nama_lengkap,
       struktur: k => `${deptById[k.id_departemen] || 'zzz'} ${k.jabatan || ''} ${namaAtasan(k)}`,
       akun: k => (!k.is_approved ? 0 : k.device_id ? 1 : 2),
     });
-  }, [karyawan, cari, urut, karById, deptById]);
+  }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif]);
 
-  const daftarBM = karyawan.filter(k => namaDept(k) === 'Backoffice' && k.jabatan === 'Business Manager' && k.is_approved);
+  const daftarBM = karyawan.filter(k => namaDept(k) === 'Backoffice' && jabatanAtasan.has(k.jabatan) && k.is_approved && k.is_aktif);
 
   // =================== AKSI CEPAT ===================
   const aksiApprove = async (kar) => {
@@ -123,12 +137,36 @@ export default function KaryawanPage() {
     toast(`Sandi ${kar.nama_lengkap} sekarang admin123.`); fetchData();
   };
 
+  const aksiNonaktif = async (kar) => {
+    const ok = await konfirmasi({
+      judul: `Nonaktifkan ${kar.nama_lengkap}?`,
+      pesan: `${kar.nama_lengkap} langsung keluar dari semua HP dan tidak bisa login lagi. Riwayat absensinya tetap tersimpan. Kamu bisa mengaktifkannya kembali dari tab Nonaktif.`,
+      tombolYa: 'Nonaktifkan', nada: 'bahaya',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('karyawan').update({ is_aktif: false }).eq('id', kar.id);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`${kar.nama_lengkap} sudah dinonaktifkan.`); fetchData();
+  };
+
+  const aksiAktifkan = async (kar) => {
+    const ok = await konfirmasi({
+      judul: `Aktifkan lagi ${kar.nama_lengkap}?`,
+      pesan: `${kar.nama_lengkap} muncul lagi di daftar karyawan dan rekap kehadiran, dan bisa login dengan sandi lamanya.`,
+      tombolYa: 'Aktifkan',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('karyawan').update({ is_aktif: true }).eq('id', kar.id);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`${kar.nama_lengkap} aktif kembali.`); fetchData();
+  };
+
   // =================== TAMBAH / EDIT KARYAWAN ===================
-  const bukaTambah = () => { setEditKar(null); setForm(FORM_KOSONG); setErrorsKar({}); setShowModal(true); };
+  const bukaTambah = () => { setEditKar(null); setForm({ ...FORM_KOSONG, id_lokasi: lokasiList[0]?.id || '' }); setErrorsKar({}); setShowModal(true); };
 
   const bukaEdit = (kar) => {
     setEditKar(kar);
-    setForm({ nama_lengkap: kar.nama_lengkap, dept: namaDept(kar), id_atasan: kar.id_atasan || '', jabatan: kar.jabatan || '' });
+    setForm({ nama_lengkap: kar.nama_lengkap, dept: namaDept(kar), id_atasan: kar.id_atasan || '', jabatan: kar.jabatan || '', id_lokasi: kar.id_lokasi || '' });
     setErrorsKar({}); setShowModal(true);
   };
 
@@ -159,7 +197,7 @@ export default function KaryawanPage() {
         : `${nama} belum punya atasan. Setelah disimpan, ${atasanBaru} jadi atasannya dan riwayat struktur mencatatnya.`,
       tombolYa: 'Simpan',
     };
-    if (form.dept === 'Backoffice' && (editKar.jabatan || '') !== form.jabatan && form.jabatan) return {
+    if ((editKar.jabatan || '') !== form.jabatan && form.jabatan) return {
       icon: ArrowRightLeft, teks: `Jabatan berubah: ${editKar.jabatan || 'belum ada'} → ${form.jabatan}.`,
       judul: `Ubah jabatan ${nama} jadi ${form.jabatan}?`,
       pesan: 'Riwayat struktur mencatat perubahan jabatan ini.',
@@ -175,8 +213,9 @@ export default function KaryawanPage() {
     const errs = {};
     if (!form.nama_lengkap.trim()) errs.nama_lengkap = 'Isi nama lengkap.';
     if (!form.dept) errs.dept = 'Pilih Marketing atau Backoffice.';
-    if (form.dept === 'Marketing' && !form.id_atasan) errs.id_atasan = 'Pilih Business Manager yang membawahi karyawan ini.';
-    if (form.dept === 'Backoffice' && !form.jabatan) errs.jabatan = 'Pilih jabatan.';
+    if (form.dept === 'Marketing' && !form.id_atasan) errs.id_atasan = 'Pilih atasan dari Backoffice.';
+    if (form.dept && !form.jabatan) errs.jabatan = 'Pilih job role.';
+    if (!form.id_lokasi) errs.id_lokasi = 'Pilih lokasi kerja.';
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
     if (perubahan && !(await konfirmasi({ judul: perubahan.judul, pesan: perubahan.pesan, tombolYa: perubahan.tombolYa }))) return;
 
@@ -185,7 +224,8 @@ export default function KaryawanPage() {
       nama_lengkap: form.nama_lengkap.trim(),
       id_departemen: deptIdByName[form.dept],
       id_atasan: form.dept === 'Marketing' ? form.id_atasan : null,
-      jabatan: form.dept === 'Marketing' ? 'Marketing' : form.jabatan,
+      jabatan: form.jabatan,
+      id_lokasi: form.id_lokasi,
     };
 
     if (editKar) {
@@ -337,7 +377,17 @@ export default function KaryawanPage() {
   return (
     <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-        <h1 className="text-2xl font-bold text-slate-900">Karyawan & Akses</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-bold text-slate-900">Karyawan & Akses</h1>
+          <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm" role="tablist" aria-label="Status karyawan">
+            {[{ v: false, l: 'Aktif', n: jumlahAktif }, { v: true, l: 'Nonaktif', n: jumlahNonaktif }].map(t => (
+              <button key={t.l} role="tab" aria-selected={lihatNonaktif === t.v} onClick={() => setLihatNonaktif(t.v)}
+                className={`px-3 py-1 rounded-md font-semibold transition-colors ${lihatNonaktif === t.v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                {t.l} <span className="text-xs text-slate-400 tabular-nums">{t.n}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
           <label className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -363,7 +413,7 @@ export default function KaryawanPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {daftarTampil.length === 0 && (
-                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{cari ? `Tidak ada karyawan yang cocok dengan "${cari}".` : 'Belum ada karyawan.'}</td></tr>
+                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{cari ? `Tidak ada karyawan yang cocok dengan "${cari}".` : lihatNonaktif ? 'Tidak ada karyawan nonaktif.' : 'Belum ada karyawan.'}</td></tr>
               )}
               {daftarTampil.map((kar) => {
                 const dept = namaDept(kar);
@@ -384,12 +434,19 @@ export default function KaryawanPage() {
                           {atasan ? `Atasan: ${atasan.nama_lengkap}` : 'Belum punya atasan. Klik edit untuk memilih.'}
                         </p>
                       )}
-                      {kar.jabatan === 'Business Manager' && (
+                      {jabatanAtasan.has(kar.jabatan) && (
                         <p className="text-xs mt-1.5 text-slate-500">Membawahi {bawahan.length} Marketing</p>
+                      )}
+                      {kar.id_lokasi && (
+                        <p className="text-xs mt-1 text-slate-500 inline-flex items-center gap-1"><MapPin className="w-3 h-3" />{lokasiById[kar.id_lokasi]}</p>
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      {!kar.is_approved ? (
+                      {!kar.is_aktif ? (
+                        <span className="px-2 py-1 bg-slate-100 text-slate-600 font-semibold rounded border border-slate-200 text-xs">
+                          Nonaktif{kar.nonaktif_at ? ` sejak ${formatTanggalWaktu(kar.nonaktif_at)}` : ''}
+                        </span>
+                      ) : !kar.is_approved ? (
                         <span className="px-2 py-1 bg-amber-50 text-amber-700 font-semibold rounded border border-amber-200 text-xs">Menunggu Approve</span>
                       ) : kar.device_id ? (
                         <span className="px-2 py-1 bg-blue-50 text-blue-700 font-semibold rounded border border-blue-200 text-xs flex items-center gap-1 w-max">
@@ -400,6 +457,12 @@ export default function KaryawanPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
+                      {!kar.is_aktif ? (
+                      <div className="flex justify-end gap-2">
+                        <button onClick={() => bukaRiwayat(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Riwayat struktur"><History className="w-4 h-4" /></button>
+                        <button onClick={() => aksiAktifkan(kar)} className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-lg text-xs font-semibold"><UserCheck className="w-4 h-4" /> Aktifkan</button>
+                      </div>
+                      ) : (
                       <div className="flex justify-end gap-2">
                         {!kar.is_approved && (<button onClick={() => aksiApprove(kar)} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg" title="Setujui akun"><Check className="w-4 h-4" /></button>)}
                         <button onClick={() => bukaEdit(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Edit, pindah tim, atau promosi"><Edit2 className="w-4 h-4" /></button>
@@ -407,8 +470,10 @@ export default function KaryawanPage() {
                         <button onClick={() => bukaRiwayat(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Riwayat struktur"><History className="w-4 h-4" /></button>
                         <button onClick={() => muatManual(kar, tanggalWIB())} className="p-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-100 rounded-lg" title="Input absen manual"><Clock className="w-4 h-4" /></button>
                         <button onClick={() => aksiResetSandi(kar)} className="p-2 bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg" title="Reset sandi ke admin123"><KeyRound className="w-4 h-4" /></button>
-                        {kar.device_id && (<button onClick={() => aksiKick(kar)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Lepas HP"><Trash2 className="w-4 h-4" /></button>)}
+                        {kar.device_id && (<button onClick={() => aksiKick(kar)} className="p-2 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-100 rounded-lg" title="Lepas HP"><Smartphone className="w-4 h-4" /></button>)}
+                        <button onClick={() => aksiNonaktif(kar)} className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-100 rounded-lg" title="Nonaktifkan karyawan"><Trash2 className="w-4 h-4" /></button>
                       </div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -418,7 +483,7 @@ export default function KaryawanPage() {
         </div>
         {karyawan.length > 0 && (
           <div className="px-6 py-3 border-t border-slate-100 text-sm text-slate-500 tabular-nums">
-            {cari ? `${daftarTampil.length} dari ${karyawan.length} karyawan` : `${karyawan.length} karyawan`}
+            {`${daftarTampil.length} karyawan ${lihatNonaktif ? 'nonaktif' : 'aktif'}`}
           </div>
         )}
       </div>
@@ -431,35 +496,44 @@ export default function KaryawanPage() {
               <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
               <div className="grid grid-cols-2 gap-2 mt-1">
                 {['Marketing', 'Backoffice'].map(d => (
-                  <button type="button" key={d} onClick={() => { setForm({ ...form, dept: d, id_atasan: d === 'Marketing' ? form.id_atasan : '', jabatan: d === 'Backoffice' ? (form.jabatan === 'Marketing' ? '' : form.jabatan) : '' }); setErrorsKar({}); }}
+                  <button type="button" key={d} onClick={() => { const roles = jabatanDept(d); setForm({ ...form, dept: d, id_atasan: d === 'Marketing' ? form.id_atasan : '', jabatan: roles.some(r => r.nama === form.jabatan) ? form.jabatan : (roles.length === 1 ? roles[0].nama : '') }); setErrorsKar({}); }}
                     className={`py-2 rounded-lg border text-sm font-bold transition-colors ${form.dept === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{d}</button>
                 ))}
               </div>
               <ErrText msg={errorsKar.dept} />
             </div>
 
-            {form.dept === 'Marketing' && (
+            {form.dept && (
               <div>
-                <label className="text-sm font-semibold text-slate-700">Atasan (Business Manager) <span className="text-rose-500">*</span></label>
-                <select value={form.id_atasan} onChange={e => { setForm({ ...form, id_atasan: e.target.value }); setErrorsKar({ ...errorsKar, id_atasan: null }); }} className={getStyleInput(errorsKar.id_atasan)}>
-                  <option value="">-- Pilih Business Manager --</option>
-                  {daftarBM.filter(b => b.id !== editKar?.id).map(b => <option key={b.id} value={b.id}>{b.nama_lengkap}</option>)}
-                </select>
-                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada Business Manager. Tambahkan dulu karyawan Backoffice dengan jabatan Business Manager.</p>}
-                <ErrText msg={errorsKar.id_atasan} />
-              </div>
-            )}
-
-            {form.dept === 'Backoffice' && (
-              <div>
-                <label className="text-sm font-semibold text-slate-700">Jabatan <span className="text-rose-500">*</span></label>
+                <label className="text-sm font-semibold text-slate-700">Job Role <span className="text-rose-500">*</span></label>
                 <select value={form.jabatan} onChange={e => { setForm({ ...form, jabatan: e.target.value }); setErrorsKar({ ...errorsKar, jabatan: null }); }} className={getStyleInput(errorsKar.jabatan)}>
-                  <option value="">-- Pilih Jabatan --</option>
-                  {JABATAN_BACKOFFICE.map(j => <option key={j} value={j}>{j}</option>)}
+                  <option value="">-- Pilih Job Role --</option>
+                  {jabatanDept(form.dept).map(j => <option key={j.nama} value={j.nama}>{j.nama}{j.bisa_jadi_atasan ? ' (bisa jadi atasan)' : ''}</option>)}
                 </select>
                 <ErrText msg={errorsKar.jabatan} />
               </div>
             )}
+
+            {form.dept === 'Marketing' && (
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Atasan (Backoffice) <span className="text-rose-500">*</span></label>
+                <select value={form.id_atasan} onChange={e => { setForm({ ...form, id_atasan: e.target.value }); setErrorsKar({ ...errorsKar, id_atasan: null }); }} className={getStyleInput(errorsKar.id_atasan)}>
+                  <option value="">-- Pilih Atasan --</option>
+                  {daftarBM.filter(b => b.id !== editKar?.id).map(b => <option key={b.id} value={b.id}>{b.nama_lengkap} · {b.jabatan}</option>)}
+                </select>
+                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada atasan. Tambahkan dulu karyawan Backoffice dengan job role yang bisa jadi atasan.</p>}
+                <ErrText msg={errorsKar.id_atasan} />
+              </div>
+            )}
+
+            <div>
+              <label className="text-sm font-semibold text-slate-700">Lokasi Kerja <span className="text-rose-500">*</span></label>
+              <select value={form.id_lokasi} onChange={e => { setForm({ ...form, id_lokasi: e.target.value }); setErrorsKar({ ...errorsKar, id_lokasi: null }); }} className={getStyleInput(errorsKar.id_lokasi)}>
+                <option value="">-- Pilih Lokasi --</option>
+                {lokasiList.map(l => <option key={l.id} value={l.id}>{l.nama_cabang}</option>)}
+              </select>
+              <ErrText msg={errorsKar.id_lokasi} />
+            </div>
 
             <div>
               <label className="text-sm font-semibold text-slate-700">Nama Lengkap <span className="text-rose-500">*</span></label>

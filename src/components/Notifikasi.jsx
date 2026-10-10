@@ -1,11 +1,11 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Bell, UserPlus, Clock } from 'lucide-react';
+import { Bell, UserPlus, Clock, UserX } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { tanggalWIB, formatJam, waktuRelatif } from '@/utils/waktu';
 
-// Notifikasi: karyawan baru (7 hari terakhir) dan karyawan terlambat hari ini.
+// Notifikasi: karyawan baru & dinonaktifkan (7 hari terakhir) dan karyawan terlambat hari ini.
 // Saat ini tampil untuk semua admin. Status "sudah dibaca" disimpan per browser.
 const KUNCI_DIBACA = 'notif_terakhir_dibaca';
 const INTERVAL_MS = 60_000;
@@ -24,17 +24,24 @@ export default function Notifikasi() {
     let batal = false;
     const muat = async () => {
       const tujuhHariLalu = new Date(Date.now() - 7 * 86400000).toISOString();
-      const [{ data: baru }, { data: telat }] = await Promise.all([
+      const [{ data: baru }, { data: telat }, { data: nonaktif }] = await Promise.all([
         supabase.from('karyawan').select('id, nama_lengkap, jabatan, created_at')
           .gte('created_at', tujuhHariLalu).order('created_at', { ascending: false }).limit(20),
         supabase.from('absensi').select('id, waktu_masuk, waktu_keluar, durasi_telat_menit, karyawan(nama_lengkap)')
           .eq('tanggal', tanggalWIB()).eq('status', 'Late').limit(50),
+        supabase.from('karyawan').select('id, nama_lengkap, jabatan, nonaktif_at')
+          .eq('is_aktif', false).gte('nonaktif_at', tujuhHariLalu).order('nonaktif_at', { ascending: false }).limit(20),
       ]);
       if (batal) return;
       const daftar = [
         ...(baru || []).map(k => ({
           id: `k-${k.id}`, jenis: 'baru', href: '/karyawan', waktu: k.created_at,
           judul: `${k.nama_lengkap} terdaftar sebagai ${k.jabatan || 'karyawan'}`,
+        })),
+        ...(nonaktif || []).map(k => ({
+          id: `n-${k.id}-${k.nonaktif_at}`, jenis: 'nonaktif', href: '/karyawan', waktu: k.nonaktif_at,
+          judul: `${k.nama_lengkap} (${k.jabatan || 'karyawan'}) dinonaktifkan`,
+          sub: 'Semua sesi HP-nya diputus',
         })),
         ...(telat || []).map(a => ({
           id: `a-${a.id}`, jenis: 'telat', href: '/kehadiran', waktu: a.waktu_masuk || a.waktu_keluar,
@@ -87,16 +94,16 @@ export default function Notifikasi() {
             {belumDibaca > 0 && <button onClick={tandaiDibaca} className="text-xs font-semibold text-blue-600 hover:text-blue-700">Tandai sudah dibaca</button>}
           </div>
           {items.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-slate-500">Belum ada karyawan baru atau yang terlambat hari ini.</p>
+            <p className="px-4 py-10 text-center text-sm text-slate-500">Belum ada karyawan baru, nonaktif, atau terlambat.</p>
           ) : (
             <ul className="max-h-96 overflow-y-auto divide-y divide-slate-100">
               {items.map(i => {
                 const baru = new Date(i.waktu).getTime() > dibaca;
-                const Icon = i.jenis === 'baru' ? UserPlus : Clock;
+                const Icon = i.jenis === 'baru' ? UserPlus : i.jenis === 'nonaktif' ? UserX : Clock;
                 return (
                   <li key={i.id}>
                     <Link href={i.href} onClick={() => setBuka(false)} className={`flex gap-3 px-4 py-3 hover:bg-slate-50 ${baru ? 'bg-blue-50/40' : ''}`}>
-                      <span className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${i.jenis === 'baru' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>
+                      <span className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${i.jenis === 'baru' ? 'bg-blue-50 text-blue-600' : i.jenis === 'nonaktif' ? 'bg-rose-50 text-rose-600' : 'bg-orange-50 text-orange-600'}`}>
                         <Icon className="w-4 h-4" />
                       </span>
                       <span className="min-w-0 flex-1">
