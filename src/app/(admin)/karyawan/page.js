@@ -1,11 +1,12 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp } from 'lucide-react';
+import { Plus, Search, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp } from 'lucide-react';
 import { tanggalWIB, jamMenitWIB, formatTanggal, formatTanggalWaktu } from '@/utils/waktu';
 import { JABATAN_BACKOFFICE, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
+import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
 
 const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '' };
 const JENIS_MANUAL = [
@@ -35,6 +36,8 @@ export default function KaryawanPage() {
   const [departemen, setDepartemen] = useState([]);
   const [loading, setLoading] = useState(false);
   const { toast, konfirmasi, info } = useFeedback();
+  const [cari, setCari] = useState('');
+  const [urut, gantiUrut] = useUrutan({ kunci: 'nama', arah: 'asc' });
 
   // Modal Tambah/Edit Karyawan
   const [showModal, setShowModal] = useState(false);
@@ -73,6 +76,18 @@ export default function KaryawanPage() {
   const karById = useMemo(() => Object.fromEntries(karyawan.map(k => [k.id, k])), [karyawan]);
   const namaDept = (k) => deptById[k?.id_departemen] || '';
   const bawahanOf = (id) => karyawan.filter(k => k.id_atasan === id);
+  // Pencarian & urutan tabel
+  const daftarTampil = useMemo(() => {
+    const q = cari.trim().toLowerCase();
+    const namaAtasan = (k) => karById[k.id_atasan]?.nama_lengkap || '';
+    const rows = q ? karyawan.filter(k => [k.nama_lengkap, k.nip, k.username, namaAtasan(k), k.jabatan].some(v => v?.toLowerCase().includes(q))) : karyawan;
+    return urutkan(rows, urut, {
+      nama: k => k.nama_lengkap,
+      struktur: k => `${deptById[k.id_departemen] || 'zzz'} ${k.jabatan || ''} ${namaAtasan(k)}`,
+      akun: k => (!k.is_approved ? 0 : k.device_id ? 1 : 2),
+    });
+  }, [karyawan, cari, urut, karById, deptById]);
+
   const daftarBM = karyawan.filter(k => namaDept(k) === 'Backoffice' && k.jabatan === 'Business Manager' && k.is_approved);
 
   // =================== AKSI CEPAT ===================
@@ -321,29 +336,36 @@ export default function KaryawanPage() {
   const getStyleInput = (isError) => `w-full px-3 py-2 border rounded-lg mt-1 outline-none transition-colors text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
   return (
     <div className="space-y-6 relative">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Data Karyawan & Akses</h1>
-          <p className="text-slate-500 text-sm mt-1">Struktur: setiap Marketing di bawah 1 Business Manager (Backoffice).</p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h1 className="text-2xl font-bold text-slate-900">Karyawan & Akses</h1>
+        <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+          <label className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari nama, NIP, atau atasan"
+              className="w-full sm:w-64 pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+          </label>
+          <button onClick={bukaTambah} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
+            <Plus className="w-4 h-4" /> Tambah Karyawan
+          </button>
         </div>
-        <button onClick={bukaTambah} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
-          <Plus className="w-4 h-4" /> Tambah Karyawan
-        </button>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600 min-w-[760px]">
-            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 text-xs">
               <tr>
-                <th className="px-6 py-4 font-semibold">Profil & Akun</th>
-                <th className="px-6 py-4 font-semibold">Struktur</th>
-                <th className="px-6 py-4 font-semibold">Status Auth</th>
-                <th className="px-6 py-4 font-semibold text-right">Aksi Cepat</th>
+                <KolomUrut kunci="nama" urut={urut} onUrut={gantiUrut}>Karyawan</KolomUrut>
+                <KolomUrut kunci="struktur" urut={urut} onUrut={gantiUrut}>Struktur</KolomUrut>
+                <KolomUrut kunci="akun" urut={urut} onUrut={gantiUrut}>Status Akun</KolomUrut>
+                <th className="px-6 py-3 font-semibold text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
-              {karyawan.map((kar) => {
+              {daftarTampil.length === 0 && (
+                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{cari ? `Tidak ada karyawan yang cocok dengan "${cari}".` : 'Belum ada karyawan.'}</td></tr>
+              )}
+              {daftarTampil.map((kar) => {
                 const dept = namaDept(kar);
                 const bawahan = bawahanOf(kar.id);
                 const atasan = karById[kar.id_atasan];
@@ -394,6 +416,11 @@ export default function KaryawanPage() {
             </tbody>
           </table>
         </div>
+        {karyawan.length > 0 && (
+          <div className="px-6 py-3 border-t border-slate-100 text-sm text-slate-500 tabular-nums">
+            {cari ? `${daftarTampil.length} dari ${karyawan.length} karyawan` : `${karyawan.length} karyawan`}
+          </div>
+        )}
       </div>
 
       {/* MODAL TAMBAH / EDIT KARYAWAN */}

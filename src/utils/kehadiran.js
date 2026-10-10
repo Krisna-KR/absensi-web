@@ -1,14 +1,22 @@
 import { supabase } from '@/utils/supabase/client';
 
-// Label & gaya status kehadiran (sumber status: fungsi DB fn_kehadiran)
+// Warna grafik per kelompok status (palet tervalidasi untuk buta warna, urutan tetap)
+export const WARNA_STATUS = {
+  Hadir: '#2a78d6',  // biru
+  Late:  '#eb6834',  // oranye
+  Izin:  '#6250d6',  // ungu (Izin, Sakit, Cuti)
+  Bolos: '#e34948',  // merah
+};
+
+// Label & gaya badge status kehadiran (sumber status: fungsi DB fn_kehadiran)
 export const STATUS_KEHADIRAN = {
-  'Hadir':       { label: 'Tepat Waktu', cls: 'bg-green-50 text-green-700 border-green-200' },
-  'Late':        { label: 'Terlambat',   cls: 'bg-amber-50 text-amber-700 border-amber-200' },
-  'Izin':        { label: 'Izin',        cls: 'bg-sky-50 text-sky-700 border-sky-200' },
+  'Hadir':       { label: 'Tepat Waktu', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+  'Late':        { label: 'Terlambat',   cls: 'bg-orange-50 text-orange-700 border-orange-200' },
+  'Izin':        { label: 'Izin',        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   'Sakit':       { label: 'Sakit',       cls: 'bg-violet-50 text-violet-700 border-violet-200' },
-  'Cuti':        { label: 'Cuti',        cls: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
+  'Cuti':        { label: 'Cuti',        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   'Libur':       { label: 'Libur',       cls: 'bg-slate-100 text-slate-500 border-slate-200' },
-  'Bolos':       { label: 'Bolos',       cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+  'Bolos':       { label: 'Bolos',       cls: 'bg-red-50 text-red-700 border-red-200' },
   'Belum Absen': { label: 'Belum Absen', cls: 'bg-white text-slate-500 border-slate-300 border-dashed' },
 };
 

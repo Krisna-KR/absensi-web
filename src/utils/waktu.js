@@ -49,7 +49,7 @@ const HARI = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 /** 'YYYY-MM-DD' -> 'Sen, 05 Okt 2026' */
 export function formatTanggal(ymd) {
   if (!ymd) return '-';
-  const [y, m, d] = ymd.split('-').map(Number);
+  const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
   const hari = HARI[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   return `${hari}, ${String(d).padStart(2, '0')} ${BULAN[m - 1]} ${y}`;
 }
@@ -57,4 +57,22 @@ export function formatTanggal(ymd) {
 export function formatTanggalWaktu(iso) {
   if (!iso) return '-';
   return new Date(iso).toLocaleString('id-ID', { timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Geser tanggal 'YYYY-MM-DD' sebanyak n hari */
+export function geserTanggal(ymd, n) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+export const NAMA_BULAN = BULAN;
+
+/** '5 menit lalu', '2 jam lalu', 'kemarin', atau tanggal */
+export function waktuRelatif(iso) {
+  const detik = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (detik < 60) return 'baru saja';
+  if (detik < 3600) return `${Math.floor(detik / 60)} menit lalu`;
+  if (detik < 86400) return `${Math.floor(detik / 3600)} jam lalu`;
+  if (detik < 172800) return 'kemarin';
+  return formatTanggal(tanggalWIB(new Date(iso)));
 }

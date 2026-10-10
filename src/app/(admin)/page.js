@@ -1,71 +1,258 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { Users, Clock, CalendarDays, Calendar, UserX } from 'lucide-react';
-import { rentangPeriode } from '@/utils/waktu';
-import { ambilKehadiran, hitungStatus } from '@/utils/kehadiran';
+import { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { Users, Clock, CalendarDays, UserX, ArrowRight } from 'lucide-react';
+import { rentangPeriode, tanggalWIB, geserTanggal, formatTanggal, jamMenitWIB, NAMA_BULAN } from '@/utils/waktu';
+import { ambilKehadiran, WARNA_STATUS } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
+import { GrafikBatang, Legenda, BatangKomposisi, DaftarBatang } from '@/components/Grafik';
+
+const PERIODE = [
+  { key: 'hari_ini', label: 'Hari ini' },
+  { key: 'bulan_ini', label: 'Bulan ini' },
+  { key: 'tahun_ini', label: 'Tahun ini' },
+];
+
+const SERI = [
+  { key: 'Hadir', label: 'Tepat waktu', warna: WARNA_STATUS.Hadir },
+  { key: 'Late', label: 'Terlambat', warna: WARNA_STATUS.Late },
+  { key: 'Izin', label: 'Izin / Sakit / Cuti', warna: WARNA_STATUS.Izin },
+  { key: 'Bolos', label: 'Bolos', warna: WARNA_STATUS.Bolos },
+];
+
+const KELOMPOK = { Hadir: 'Hadir', Late: 'Late', Izin: 'Izin', Sakit: 'Izin', Cuti: 'Izin', Bolos: 'Bolos' };
+
+// Bin jam masuk per 15 menit (menit sejak 00:00 WIB)
+const BIN_JAM = (() => {
+  const bins = [{ label: '≤07.00', judul: 'Sampai 07.00', sampai: 420 }];
+  for (let akhir = 435; akhir <= 570; akhir += 15) {
+    const jj = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}.${String(m % 60).padStart(2, '0')}`;
+    bins.push({ label: jj(akhir), judul: `${jj(akhir - 14)}–${jj(akhir)}`, sampai: akhir });
+  }
+  bins.push({ label: '>09.30', judul: 'Setelah 09.30', sampai: Infinity });
+  return bins;
+})();
+const INDEX_BATAS = BIN_JAM.findIndex(b => b.sampai === 480); // 08.00
+
+function rentangDashboard(periode) {
+  const hariIni = tanggalWIB();
+  if (periode === 'hari_ini') return { mulai: geserTanggal(hariIni, -29), sampai: hariIni, keteranganTren: 'Per hari, 30 hari terakhir', label: '30 hari terakhir' };
+  const r = rentangPeriode(periode);
+  return periode === 'bulan_ini'
+    ? { ...r, keteranganTren: 'Per hari, bulan ini', label: 'Bulan ini' }
+    : { ...r, keteranganTren: 'Per bulan, tahun ini', label: 'Tahun ini' };
+}
+
+function olahData(rows, periode) {
+  const hariIni = tanggalWIB();
+  const kerja = rows.filter(r => KELOMPOK[r.status]);
+  const kpiRows = periode === 'hari_ini' ? kerja.filter(r => r.tanggal === hariIni) : kerja;
+
+  const hitung = (list) => {
+    const c = { Hadir: 0, Late: 0, Izin: 0, Bolos: 0 };
+    list.forEach(r => { c[KELOMPOK[r.status]]++; });
+    return c;
+  };
+  const kpi = hitung(kpiRows);
+  const totalKpi = kpiRows.length;
+
+  // Tren
+  const perKunci = new Map();
+  const bulanan = periode === 'tahun_ini';
+  kerja.forEach(r => {
+    const k = bulanan ? r.tanggal.slice(0, 7) : r.tanggal;
+    if (!perKunci.has(k)) perKunci.set(k, []);
+    perKunci.get(k).push(r);
+  });
+  const tren = [...perKunci.keys()].sort().map(k => {
+    const [y, m, d] = k.split('-');
+    return {
+      label: bulanan ? NAMA_BULAN[Number(m) - 1] : String(Number(d)),
+      judulTooltip: bulanan ? `${NAMA_BULAN[Number(m) - 1]} ${y}` : formatTanggal(k),
+      nilai: hitung(perKunci.get(k)),
+    };
+  });
+
+  // Distribusi jam masuk
+  const hist = BIN_JAM.map(b => ({ label: b.label, judulTooltip: b.judul, nilai: { Hadir: 0, Late: 0 } }));
+  kerja.forEach(r => {
+    if (!r.waktu_masuk) return;
+    const [hh, mm] = jamMenitWIB(r.waktu_masuk).split(':').map(Number);
+    const menit = hh * 60 + mm;
+    const i = BIN_JAM.findIndex(b => menit <= b.sampai);
+    hist[i].nilai[menit <= 480 ? 'Hadir' : 'Late']++;
+  });
+
+  // Ketepatan waktu per tim
+  const tim = new Map();
+  kerja.forEach(r => {
+    const nama = r.jabatan === 'Marketing' ? (r.nama_atasan ? `Tim ${r.nama_atasan}` : 'Marketing tanpa atasan') : 'Backoffice';
+    const t = tim.get(nama) || { total: 0, tepat: 0 };
+    t.total++; if (r.status === 'Hadir') t.tepat++;
+    tim.set(nama, t);
+  });
+  const perTim = [...tim.entries()]
+    .map(([nama, t]) => ({ key: nama, label: nama, nilai: Math.round((t.tepat / t.total) * 100), teks: `${Math.round((t.tepat / t.total) * 100)}%` }))
+    .sort((a, b) => b.nilai - a.nilai);
+
+  // Paling sering terlambat
+  const telat = new Map();
+  kerja.filter(r => r.status === 'Late').forEach(r => {
+    const t = telat.get(r.id_karyawan) || { nama: r.nama_lengkap, n: 0, menit: 0, nMenit: 0 };
+    t.n++;
+    if (r.durasi_telat_menit != null) { t.menit += r.durasi_telat_menit; t.nMenit++; }
+    telat.set(r.id_karyawan, t);
+  });
+  const topTelat = [...telat.entries()].map(([id, t]) => ({
+    key: id, label: t.nama, nilai: t.n, teks: `${t.n}x`,
+    sub: t.nMenit ? `rata-rata ${Math.round(t.menit / t.nMenit)} mnt` : '',
+  })).sort((a, b) => b.nilai - a.nilai).slice(0, 5);
+
+  return { kpi, totalKpi, tren, hist, perTim, topTelat, adaJam: hist.some(h => h.nilai.Hadir + h.nilai.Late > 0) };
+}
+
+function Kartu({ judul, sub, aksi, children, className = '' }) {
+  return (
+    <section className={`bg-white rounded-xl border border-slate-200 shadow-sm p-5 ${className}`}>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="font-semibold text-slate-900">{judul}</h2>
+          {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
+        </div>
+        {aksi}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+const Kosong = ({ teks = 'Belum ada data untuk periode ini.' }) => (
+  <div className="h-40 flex items-center justify-center text-sm text-slate-400">{teks}</div>
+);
 
 export default function Dashboard() {
-  const [stats, setStats] = useState({ hadir: 0, telat: 0, izin: 0, bolos: 0 });
   const [periode, setPeriode] = useState('hari_ini');
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const rentang = useMemo(() => rentangDashboard(periode), [periode]);
 
   useEffect(() => {
     let batal = false;
     (async () => {
       try {
-        const { mulai, sampai } = rentangPeriode(periode);
-        const c = hitungStatus(await ambilKehadiran({ mulai, sampai }));
+        const data = await ambilKehadiran({ mulai: rentang.mulai, sampai: rentang.sampai });
         if (batal) return;
-        setStats({ hadir: c.Hadir, telat: c.Late, izin: c.Izin + c.Sakit + c.Cuti, bolos: c.Bolos });
-        setError('');
+        setRows(data); setError('');
       } catch (e) {
         if (!batal) setError(pesanError(e));
       }
       if (!batal) setLoading(false);
     })();
     return () => { batal = true; };
-  }, [periode]);
+  }, [rentang]);
 
-  const kartu = [
-    { judul: 'Hadir Tepat Waktu', nilai: stats.hadir, icon: Users, warna: 'bg-blue-50 text-blue-600' },
-    { judul: 'Terlambat', nilai: stats.telat, icon: Clock, warna: 'bg-amber-50 text-amber-600' },
-    { judul: 'Izin / Sakit / Cuti', nilai: stats.izin, icon: CalendarDays, warna: 'bg-sky-50 text-sky-600' },
-    { judul: 'Bolos', nilai: stats.bolos, icon: UserX, warna: 'bg-rose-50 text-rose-600' },
+  const d = useMemo(() => olahData(rows, periode), [rows, periode]);
+  const persen = (n) => (d.totalKpi ? Math.round((n / d.totalKpi) * 1000) / 10 : 0);
+  const tingkatHadir = d.totalKpi ? Math.round(((d.kpi.Hadir + d.kpi.Late) / d.totalKpi) * 1000) / 10 : null;
+  const labelPeriode = PERIODE.find(p => p.key === periode).label.toLowerCase();
+
+  const kartuKpi = [
+    { key: 'Hadir', judul: 'Tepat waktu', icon: Users },
+    { key: 'Late', judul: 'Terlambat', icon: Clock },
+    { key: 'Izin', judul: 'Izin / Sakit / Cuti', icon: CalendarDays },
+    { key: 'Bolos', judul: 'Bolos', icon: UserX },
   ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard Utama</h1>
-          <p className="text-slate-500 text-sm mt-1">Ringkasan aktivitas kehadiran karyawan (hari kerja, libur tidak dihitung).</p>
-        </div>
-        <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-4 py-2 rounded-lg">
-          <Calendar className="w-4 h-4 text-slate-500" />
-          <select value={periode} onChange={(e) => { setLoading(true); setPeriode(e.target.value); }} className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
-            <option value="hari_ini">Filter: Hari Ini</option>
-            <option value="bulan_ini">Filter: Bulan Ini</option>
-            <option value="tahun_ini">Filter: Tahun Ini</option>
-          </select>
+    <div className="space-y-5">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+        <div className="inline-flex p-1 bg-white border border-slate-200 rounded-lg shadow-sm" role="tablist" aria-label="Periode">
+          {PERIODE.map(p => (
+            <button key={p.key} role="tab" aria-selected={periode === p.key}
+              onClick={() => { if (p.key !== periode) { setLoading(true); setPeriode(p.key); } }}
+              className={`px-3.5 py-1.5 text-sm font-semibold rounded-md transition-colors ${periode === p.key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}>
+              {p.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Ringkasan belum bisa dimuat. {error}</div>}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {kartu.map(({ judul, nilai, icon: Icon, warna }) => (
-          <div key={judul} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${warna}`}><Icon className="w-6 h-6" /></div>
-              <div>
-                <p className="text-slate-500 text-sm font-medium">{judul}</p>
-                <h3 className="text-3xl font-black text-slate-900">{loading ? '...' : nilai}</h3>
-              </div>
+      {/* KPI */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="col-span-2 lg:col-span-1 rounded-xl p-5 bg-slate-900 text-white shadow-sm flex flex-col justify-between min-h-[132px]">
+          <p className="text-sm text-slate-300">Tingkat kehadiran {labelPeriode}</p>
+          {loading ? <div className="h-10 w-24 bg-white/10 rounded animate-pulse" /> : tingkatHadir === null ? (
+            <p className="text-lg font-semibold">{periode === 'hari_ini' ? 'Hari ini libur' : 'Belum ada hari kerja'}</p>
+          ) : (
+            <p className="text-4xl font-bold tracking-tight">{tingkatHadir.toLocaleString('id-ID')}<span className="text-2xl text-slate-400">%</span></p>
+          )}
+          <p className="text-xs text-slate-400">{d.totalKpi ? `${d.kpi.Hadir + d.kpi.Late} dari ${d.totalKpi} hari kerja karyawan` : 'Sabtu, Minggu, dan tanggal merah tidak dihitung'}</p>
+        </div>
+        {kartuKpi.map(({ key, judul, icon: Icon }) => (
+          <div key={key} className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 relative overflow-hidden min-h-[132px] flex flex-col justify-between">
+            <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: WARNA_STATUS[key] }} />
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <Icon className="w-4 h-4" style={{ color: WARNA_STATUS[key] }} />{judul}
             </div>
+            {loading ? <div className="h-9 w-16 bg-slate-100 rounded animate-pulse" /> : (
+              <p className="text-3xl font-bold text-slate-900">{d.kpi[key].toLocaleString('id-ID')}</p>
+            )}
+            <p className="text-xs text-slate-500 tabular-nums">{loading ? ' ' : `${persen(d.kpi[key]).toLocaleString('id-ID')}% dari hari kerja`}</p>
           </div>
         ))}
+      </div>
+
+      {/* Tren + komposisi */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Kartu judul="Tren kehadiran" sub={rentang.keteranganTren} className="lg:col-span-2" aksi={<Legenda seri={SERI} />}>
+          {loading ? <div className="h-[240px] bg-slate-50 rounded-lg animate-pulse" /> : d.tren.length ? (
+            <GrafikBatang data={d.tren} seri={SERI} tinggi={240} />
+          ) : <Kosong />}
+        </Kartu>
+
+        <Kartu judul="Komposisi status" sub={periode === 'hari_ini' ? 'Hari ini' : rentang.label}>
+          {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.totalKpi ? (
+            <div className="space-y-5">
+              <BatangKomposisi bagian={SERI.map(s => ({ ...s, nilai: d.kpi[s.key] }))} />
+              <ul className="space-y-3">
+                {SERI.map(s => (
+                  <li key={s.key} className="flex items-center justify-between text-sm">
+                    <span className="inline-flex items-center gap-2 text-slate-700"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: s.warna }} />{s.label}</span>
+                    <span className="tabular-nums text-slate-500"><b className="text-slate-900 font-semibold">{d.kpi[s.key]}</b> · {persen(d.kpi[s.key]).toLocaleString('id-ID')}%</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : <Kosong teks={periode === 'hari_ini' ? 'Hari ini bukan hari kerja.' : undefined} />}
+        </Kartu>
+      </div>
+
+      {/* Jam masuk, per tim, terlambat */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Kartu judul="Jam absen masuk" sub={`Sebaran per 15 menit, ${rentang.label.toLowerCase()}`}
+          aksi={<Legenda seri={[{ key: 'Hadir', label: 'Tepat', warna: WARNA_STATUS.Hadir }, { key: 'Late', label: 'Telat', warna: WARNA_STATUS.Late }]} />}>
+          {loading ? <div className="h-[200px] bg-slate-50 rounded-lg animate-pulse" /> : d.adaJam ? (
+            <GrafikBatang data={d.hist} tinggi={200} garisAcuan={{ setelahIndex: INDEX_BATAS, label: 'Batas 08.00' }}
+              seri={[{ key: 'Hadir', label: 'Tepat waktu', warna: WARNA_STATUS.Hadir }, { key: 'Late', label: 'Terlambat', warna: WARNA_STATUS.Late }]} />
+          ) : <Kosong />}
+        </Kartu>
+
+        <Kartu judul="Ketepatan waktu per tim" sub={`Hari kerja dengan absen masuk sampai 08.00, ${rentang.label.toLowerCase()}`}>
+          {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.perTim.length ? (
+            <DaftarBatang items={d.perTim} warna={WARNA_STATUS.Hadir} maks={100} />
+          ) : <Kosong />}
+        </Kartu>
+
+        <Kartu judul="Paling sering terlambat" sub={rentang.label}
+          aksi={<Link href="/kehadiran" className="text-xs font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">Rekap <ArrowRight className="w-3 h-3" /></Link>}>
+          {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.topTelat.length ? (
+            <DaftarBatang items={d.topTelat} warna={WARNA_STATUS.Late} />
+          ) : <Kosong teks="Tidak ada yang terlambat di periode ini." />}
+        </Kartu>
       </div>
     </div>
   );

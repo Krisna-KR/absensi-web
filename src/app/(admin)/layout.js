@@ -1,7 +1,8 @@
 'use client';
-import { Bell, Calendar, Home, LogOut, Users, FileText, Umbrella, QrCode } from "lucide-react";
+import { Calendar, Home, LogOut, Users, FileText, Umbrella, QrCode } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import Notifikasi from "@/components/Notifikasi";
 import { usePathname } from "next/navigation";
 
 export default function AdminLayout({ children }) {
@@ -28,10 +29,7 @@ export default function AdminLayout({ children }) {
               </div>
             </div>
             {/* Tombol notifikasi di HP dipindah ke kanan logo agar hemat tempat */}
-            <div className="relative cursor-pointer lg:hidden">
-                <Bell className="w-5 h-5 text-slate-500" />
-                <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">3</span>
-            </div>
+            <div className="lg:hidden"><Notifikasi /></div>
         </div>
 
         {/* MENU NAVIGASI: Diubah menjadi horizontal scroll untuk HP */}
@@ -58,12 +56,7 @@ export default function AdminLayout({ children }) {
 
         {/* PROFIL ADMIN (Hanya tampil penuh di PC/Tablet besar) */}
         <div className="hidden lg:flex items-center justify-end gap-6 w-auto">
-            <div className="relative cursor-pointer">
-                <div className="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center hover:bg-slate-100 transition">
-                    <Bell className="w-5 h-5 text-slate-500" />
-                </div>
-                <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow-sm">3</span>
-            </div>
+            <Notifikasi />
             <div className="flex items-center gap-3 border-l border-slate-200 pl-6">
                 <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">AR</div>
                 <div className="flex flex-col">

@@ -1,9 +1,32 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { LogIn, LogOut, Calendar, Filter } from 'lucide-react';
+import { LogIn, LogOut, Calendar, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { rentangPeriode, formatJam, formatTanggal } from '@/utils/waktu';
 import { ambilKehadiran, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
+import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
+
+const PER_HALAMAN = 50;
+
+// Filter status: "Izin/Sakit/Cuti" digabung agar chip tidak terlalu banyak
+const FILTER_STATUS = [
+  { key: 'semua', label: 'Semua', cocok: r => r.status !== 'Libur' },
+  { key: 'Hadir', label: 'Tepat Waktu', cocok: r => r.status === 'Hadir' },
+  { key: 'Late', label: 'Terlambat', cocok: r => r.status === 'Late' },
+  { key: 'izin', label: 'Izin / Sakit / Cuti', cocok: r => ['Izin', 'Sakit', 'Cuti'].includes(r.status) },
+  { key: 'Bolos', label: 'Bolos', cocok: r => r.status === 'Bolos' },
+  { key: 'Belum Absen', label: 'Belum Absen', cocok: r => r.status === 'Belum Absen' },
+  { key: 'Libur', label: 'Libur', cocok: r => r.status === 'Libur' },
+];
+
+const URUTAN_STATUS = ['Hadir', 'Late', 'Izin', 'Sakit', 'Cuti', 'Belum Absen', 'Bolos', 'Libur'];
+const AKSES_URUT = {
+  nama: r => r.nama_lengkap,
+  tanggal: r => r.tanggal,
+  masuk: r => r.waktu_masuk ? new Date(r.waktu_masuk).getTime() : null,
+  keluar: r => r.waktu_keluar ? new Date(r.waktu_keluar).getTime() : null,
+  status: r => URUTAN_STATUS.indexOf(r.status),
+};
 
 export default function KehadiranPage() {
   const [data, setData] = useState([]);
@@ -11,7 +34,10 @@ export default function KehadiranPage() {
   const [periode, setPeriode] = useState('hari_ini');
   const [customDate, setCustomDate] = useState('');
   const [filterStatus, setFilterStatus] = useState('semua');
+  const [cari, setCari] = useState('');
+  const [halaman, setHalaman] = useState(1);
   const [galat, setGalat] = useState('');
+  const [urut, gantiUrut] = useUrutan({ kunci: 'tanggal', arah: 'desc' });
 
   const rentang = useMemo(() => rentangPeriode(periode, customDate), [periode, customDate]);
 
@@ -30,101 +56,144 @@ export default function KehadiranPage() {
     return () => { batal = true; };
   }, [rentang]);
 
-  const tampil = useMemo(() => {
+  const hasilCari = useMemo(() => {
     if (!rentang) return [];
-    if (filterStatus === 'semua') return data.filter(r => r.status !== 'Libur');
-    if (filterStatus === 'semua_libur') return data;
-    return data.filter(r => r.status === filterStatus);
-  }, [data, filterStatus, rentang]);
+    const q = cari.trim().toLowerCase();
+    return q ? data.filter(r => r.nama_lengkap?.toLowerCase().includes(q) || r.nip?.toLowerCase().includes(q)) : data;
+  }, [data, cari, rentang]);
+
+  const jumlah = useMemo(() => Object.fromEntries(FILTER_STATUS.map(f => [f.key, hasilCari.filter(f.cocok).length])), [hasilCari]);
+
+  const tampil = useMemo(() => {
+    const f = FILTER_STATUS.find(x => x.key === filterStatus) || FILTER_STATUS[0];
+    return urutkan(hasilCari.filter(f.cocok), urut, AKSES_URUT);
+  }, [hasilCari, filterStatus, urut]);
+
+  const totalHalaman = Math.max(1, Math.ceil(tampil.length / PER_HALAMAN));
+  const halamanAktif = Math.min(halaman, totalHalaman);
+  const potongan = tampil.slice((halamanAktif - 1) * PER_HALAMAN, halamanAktif * PER_HALAMAN);
+
+  const gantiPeriode = (v) => { setLoading(v !== 'custom'); setPeriode(v); setCustomDate(''); setHalaman(1); };
+  const urutKolom = (k) => { gantiUrut(k); setHalaman(1); };
+  const kolom = { urut, onUrut: urutKolom };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-        <div>
+    <div className="space-y-4">
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <h1 className="text-2xl font-bold text-slate-900">Rekap Kehadiran</h1>
-          <p className="text-slate-500 text-sm mt-1">Status per karyawan per hari: hadir, terlambat, izin, sakit, cuti, libur, atau bolos.</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <label className="relative">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input type="search" value={cari} onChange={e => { setCari(e.target.value); setHalaman(1); }} placeholder="Cari nama atau NIP"
+                className="w-full sm:w-56 pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
+            </label>
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-lg">
+              <Calendar className="w-4 h-4 text-slate-500" />
+              <select value={periode} onChange={e => gantiPeriode(e.target.value)} className="bg-transparent text-sm font-semibold text-slate-700 outline-none cursor-pointer">
+                <option value="hari_ini">Hari ini</option>
+                <option value="bulan_ini">Bulan ini</option>
+                <option value="tahun_ini">Tahun ini</option>
+                <option value="custom">Pilih tanggal</option>
+              </select>
+              {periode === 'custom' && (
+                <input type="date" value={customDate} onChange={e => { setLoading(!!e.target.value); setCustomDate(e.target.value); setHalaman(1); }}
+                  className="text-sm border border-slate-300 rounded px-2 py-0.5 bg-white outline-none focus:ring-2 focus:ring-blue-100" />
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 p-2 rounded-lg">
-            <Calendar className="w-4 h-4 text-slate-500 ml-1" />
-            <select value={periode} onChange={(e) => { setLoading(e.target.value !== 'custom'); setPeriode(e.target.value); setCustomDate(''); }} className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
-              <option value="hari_ini">Hari Ini</option>
-              <option value="bulan_ini">Bulan Ini</option>
-              <option value="tahun_ini">Tahun Ini</option>
-              <option value="custom">Pilih Tanggal...</option>
-            </select>
-            {periode === 'custom' && (
-              <input type="date" value={customDate} onChange={(e) => { setLoading(!!e.target.value); setCustomDate(e.target.value); }} className="text-sm border border-slate-300 rounded px-2 py-1 focus:ring-2 focus:ring-blue-500 outline-none bg-white" />
-            )}
-          </div>
-          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 p-2 rounded-lg">
-            <Filter className="w-4 h-4 text-slate-500 ml-1" />
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="bg-transparent text-sm font-bold text-slate-700 outline-none cursor-pointer">
-              <option value="semua">Semua (tanpa Libur)</option>
-              <option value="semua_libur">Semua (dengan Libur)</option>
-              {Object.entries(STATUS_KEHADIRAN).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
+        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter status">
+          {FILTER_STATUS.map(f => {
+            const aktif = filterStatus === f.key;
+            return (
+              <button key={f.key} role="tab" aria-selected={aktif} onClick={() => { setFilterStatus(f.key); setHalaman(1); }}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors ${aktif ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                {f.label}
+                <span className={`text-xs tabular-nums px-1.5 rounded-full ${aktif ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{loading ? '·' : jumlah[f.key]}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Data kehadiran belum bisa dimuat. {galat}</div>}
 
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden min-h-[400px]">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap min-w-[800px]">
-            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
+          <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap min-w-[820px]">
+            <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 text-xs">
               <tr>
-                <th className="px-6 py-4 font-semibold">Karyawan</th>
-                <th className="px-6 py-4 font-semibold">Tanggal</th>
-                <th className="px-6 py-4 font-semibold text-center">Masuk</th>
-                <th className="px-6 py-4 font-semibold text-center">Keluar</th>
-                <th className="px-6 py-4 font-semibold">Status</th>
-                <th className="px-6 py-4 font-semibold">Keterangan</th>
+                <KolomUrut kunci="nama" {...kolom}>Karyawan</KolomUrut>
+                <KolomUrut kunci="tanggal" {...kolom}>Tanggal</KolomUrut>
+                <KolomUrut kunci="masuk" {...kolom} className="text-center">Masuk</KolomUrut>
+                <KolomUrut kunci="keluar" {...kolom} className="text-center">Pulang</KolomUrut>
+                <KolomUrut kunci="status" {...kolom}>Status</KolomUrut>
+                <th className="px-6 py-3 font-semibold">Keterangan</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">Memuat data kehadiran...</td></tr>
-              ) : tampil.length === 0 ? (
-                <tr><td colSpan="6" className="px-6 py-12 text-center text-slate-500">{rentang ? 'Belum ada data untuk periode dan filter ini.' : 'Pilih tanggal terlebih dahulu.'}</td></tr>
-              ) : (
-                tampil.map((r) => {
-                  const st = STATUS_KEHADIRAN[r.status] || { label: r.status, cls: 'bg-slate-50 text-slate-600 border-slate-200' };
-                  return (
-                    <tr key={`${r.id_karyawan}-${r.tanggal}`} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <p className="font-bold text-slate-900">{r.nama_lengkap}</p>
-                        <p className="text-xs text-slate-500 font-mono mt-0.5">{r.nip} · {r.jabatan || '-'}{r.nama_atasan ? ` · Team ${r.nama_atasan}` : ''}</p>
-                      </td>
-                      <td className="px-6 py-4 font-medium text-slate-700">{formatTanggal(r.tanggal)}</td>
-                      <td className="px-6 py-4 text-center">
-                        {r.waktu_masuk ? (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-green-50 text-green-700 rounded-lg border border-green-200 font-bold text-xs">
-                            <LogIn className="w-3 h-3" /> {formatJam(r.waktu_masuk)}
-                          </div>
-                        ) : <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        {r.waktu_keluar ? (
-                          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-rose-50 text-rose-700 rounded-lg border border-rose-200 font-bold text-xs">
-                            <LogOut className="w-3 h-3" /> {formatJam(r.waktu_keluar)}
-                          </div>
-                        ) : <span className="text-slate-300">—</span>}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded border text-xs font-bold ${st.cls}`}>{st.label}</span>
-                        {r.status === 'Late' && r.durasi_telat_menit > 0 && <span className="ml-2 text-xs text-amber-600 font-semibold">+{r.durasi_telat_menit} mnt</span>}
-                      </td>
-                      <td className="px-6 py-4 text-xs text-slate-500 max-w-[240px] truncate" title={r.keterangan || ''}>{r.keterangan || '-'}</td>
-                    </tr>
-                  );
-                })
-              )}
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i}><td colSpan="6" className="px-6 py-4"><div className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: `${60 + (i % 3) * 12}%` }} /></td></tr>
+                ))
+              ) : potongan.length === 0 ? (
+                <tr><td colSpan="6" className="px-6 py-16 text-center text-slate-500">
+                  {!rentang ? 'Pilih tanggal dulu.' : cari ? `Tidak ada karyawan yang cocok dengan "${cari}".` : 'Belum ada data untuk periode dan filter ini.'}
+                </td></tr>
+              ) : potongan.map(r => {
+                const st = STATUS_KEHADIRAN[r.status] || { label: r.status, cls: 'bg-slate-50 text-slate-600 border-slate-200' };
+                return (
+                  <tr key={`${r.id_karyawan}-${r.tanggal}`} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-6 py-3">
+                      <p className="font-semibold text-slate-900">{r.nama_lengkap}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        <span className="font-mono">{r.nip}</span>
+                        {r.jabatan && <span> · {r.jabatan}</span>}
+                        {r.nama_atasan && <span> · Tim {r.nama_atasan}</span>}
+                      </p>
+                    </td>
+                    <td className="px-6 py-3 text-slate-700">{formatTanggal(r.tanggal)}</td>
+                    <td className="px-6 py-3 text-center">
+                      {r.waktu_masuk ? (
+                        <span className="inline-flex items-center gap-1.5 text-slate-800 font-medium tabular-nums"><LogIn className="w-3.5 h-3.5 text-slate-400" />{formatJam(r.waktu_masuk)}</span>
+                      ) : <span className="text-slate-300">–</span>}
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      {r.waktu_keluar ? (
+                        <span className="inline-flex items-center gap-1.5 text-slate-800 font-medium tabular-nums"><LogOut className="w-3.5 h-3.5 text-slate-400" />{formatJam(r.waktu_keluar)}</span>
+                      ) : <span className="text-slate-300">–</span>}
+                    </td>
+                    <td className="px-6 py-3">
+                      <span className={`px-2 py-0.5 rounded-md border text-xs font-semibold ${st.cls}`}>{st.label}</span>
+                      {r.status === 'Late' && r.durasi_telat_menit > 0 && <span className="ml-2 text-xs text-slate-500 tabular-nums">+{r.durasi_telat_menit} mnt</span>}
+                      {r.status === 'Late' && !r.waktu_masuk && <span className="ml-2 text-xs text-slate-500">tanpa absen masuk</span>}
+                    </td>
+                    <td className="px-6 py-3 text-xs text-slate-500 max-w-[240px] truncate" title={r.keterangan || ''}>{r.keterangan || '–'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
+
+        {!loading && tampil.length > 0 && (
+          <div className="flex items-center justify-between gap-3 px-6 py-3 border-t border-slate-100 text-sm text-slate-500">
+            <span className="tabular-nums">
+              {(halamanAktif - 1) * PER_HALAMAN + 1}–{Math.min(halamanAktif * PER_HALAMAN, tampil.length)} dari {tampil.length} baris
+            </span>
+            {totalHalaman > 1 && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setHalaman(halamanAktif - 1)} disabled={halamanAktif === 1} aria-label="Halaman sebelumnya"
+                  className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="w-4 h-4" /></button>
+                <span className="px-2 tabular-nums">{halamanAktif} / {totalHalaman}</span>
+                <button onClick={() => setHalaman(halamanAktif + 1)} disabled={halamanAktif === totalHalaman} aria-label="Halaman berikutnya"
+                  className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
