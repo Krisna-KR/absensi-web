@@ -28,6 +28,10 @@ const HASIL_GAGAL = {
   SESI_HABIS: ['Sesi berakhir', 'Login lagi untuk melanjutkan absen.'],
 };
 
+// Pendaftaran mandiri dari HP. Ubah ke true untuk membuka lagi
+// (fungsi fn_register_karyawan di database juga harus di-GRANT ulang).
+const PENDAFTARAN_DIBUKA = false;
+
 function ambilDeviceId() {
   try {
     let id = localStorage.getItem('device_id');
@@ -257,7 +261,7 @@ export default function MobileScannerPage() {
         </div>
 
         {/* FASE 0: REGISTRASI KARYAWAN BARU */}
-        {step === 0 && (
+        {PENDAFTARAN_DIBUKA && step === 0 && (
           <div className="flex-1 flex flex-col justify-center p-6">
             <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-blue-100">
                <UserPlus className="w-8 h-8 text-blue-600" />
@@ -328,11 +332,13 @@ export default function MobileScannerPage() {
               <button disabled={loading} type="submit" className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-2xl hover:bg-blue-700 transition mt-2 shadow-md">{loading ? 'Memvalidasi...' : 'Masuk'}</button>
             </form>
             
-            {/* TOMBOL MENUJU PENDAFTARAN */}
+            {/* TOMBOL MENUJU PENDAFTARAN (disembunyikan: karyawan baru ditambahkan lewat admin) */}
+            {PENDAFTARAN_DIBUKA && (
             <div className="mt-8 text-center border-t border-slate-200 pt-6">
                <p className="text-sm text-slate-500 mb-3">Karyawan baru?</p>
                <button onClick={() => {setStep(0); setMessage('');}} className="w-full py-3 border-2 border-blue-600 text-blue-600 font-extrabold rounded-xl hover:bg-blue-50 transition">Daftar Akun Karyawan</button>
             </div>
+            )}
           </div>
         )}
 
