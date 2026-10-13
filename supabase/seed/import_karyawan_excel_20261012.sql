@@ -122,7 +122,7 @@ END $$;
 -- ---------- 1. Backoffice dulu (BO + 5 Team Leader sebagai Business Manager) ----------
 INSERT INTO karyawan (nama_lengkap, id_departemen, jabatan, id_lokasi, password, role, is_approved, created_at)
 SELECT t.nama, (SELECT id FROM master_departemen WHERE nama_departemen = 'Backoffice' ORDER BY id LIMIT 1),
-       t.jabatan, (SELECT id FROM master_lokasi WHERE nama_cabang = 'Malang'),
+       t.jabatan, (SELECT id FROM master_lokasi WHERE nama_cabang = 'Surabaya'),
        'admin123', 'Karyawan', true, timestamptz '2026-04-12 08:00+07'
 FROM tmp_excel t WHERE t.dept = 'Backoffice';
 
@@ -130,7 +130,7 @@ FROM tmp_excel t WHERE t.dept = 'Backoffice';
 INSERT INTO karyawan (nama_lengkap, id_departemen, jabatan, id_atasan, id_lokasi, password, role, is_approved, created_at)
 SELECT t.nama, (SELECT id FROM master_departemen WHERE nama_departemen = 'Marketing' ORDER BY id LIMIT 1),
        'Marketing', (SELECT id FROM karyawan WHERE nama_lengkap = t.atasan),
-       (SELECT id FROM master_lokasi WHERE nama_cabang = 'Malang'),
+       (SELECT id FROM master_lokasi WHERE nama_cabang = 'Surabaya'),
        'admin123', 'Karyawan', true, timestamptz '2026-04-12 08:00+07'
 FROM tmp_excel t WHERE t.dept = 'Marketing';
 

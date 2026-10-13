@@ -7,6 +7,14 @@ import { supabase } from '@/utils/supabase/client';
 import { ambilToken, simpanToken, hapusToken, kodeError } from '@/utils/sesi';
 import { pesanError } from '@/utils/pesanError';
 
+// Setelah login, kembali ke halaman asal (?next=/qr-kiosk). Hanya path internal.
+function tujuanSetelahLogin() {
+  try {
+    const next = new URLSearchParams(window.location.search).get('next') || '';
+    return /^\/(?![/\\])/.test(next) ? next : '/';
+  } catch { return '/'; }
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [form, setForm] = useState({ username: '', password: '' });
@@ -21,7 +29,7 @@ export default function LoginPage() {
     (async () => {
       const { data } = await supabase.rpc('fn_admin_saya');
       if (batal) return;
-      if (data) router.replace('/'); else hapusToken('admin');
+      if (data) router.replace(tujuanSetelahLogin()); else hapusToken('admin');
     })();
     return () => { batal = true; };
   }, [router]);
@@ -37,7 +45,7 @@ export default function LoginPage() {
       return;
     }
     simpanToken('admin', data.token);
-    router.replace('/');
+    router.replace(tujuanSetelahLogin());
   };
 
   const kelasInput = 'w-full px-4 py-3 rounded-xl bg-white/70 border border-white text-slate-900 placeholder-slate-400 shadow-[inset_2px_2px_5px_rgba(15,23,42,0.06)] outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/15 transition';
