@@ -60,13 +60,13 @@ export default function LoginPage() {
 
         {/* Kiri: logo liquid glass */}
         <div className="relative flex items-center justify-center px-8 py-12 md:py-20 min-h-[260px]">
-          <div className="relative w-44 h-44 md:w-56 md:h-56 rounded-[2.75rem] p-2 bg-white/35 backdrop-blur-2xl border border-white/80
+          <div className="relative w-44 h-44 md:w-56 md:h-56 rounded-full p-2 bg-white/35 backdrop-blur-2xl border border-white/80
             shadow-[18px_18px_40px_rgba(15,23,42,0.18),-14px_-14px_36px_rgba(255,255,255,0.95)]">
-            <Image src="/logo-kr-besar.png" alt="Logo KR" width={512} height={512} priority
-              className="w-full h-full object-cover rounded-[2.3rem] shadow-[0_12px_28px_rgba(180,120,10,0.35)]" />
+            <Image src="/logo-gifx-besar.png" alt="Logo GIFX" width={512} height={512} priority
+              className="w-full h-full object-contain rounded-full shadow-[0_12px_28px_rgba(180,120,10,0.35)]" />
             {/* kilau kaca di atas logo */}
-            <div className="absolute inset-2 rounded-[2.3rem] bg-gradient-to-br from-white/45 via-white/5 to-transparent pointer-events-none" />
-            <div className="absolute inset-2 rounded-[2.3rem] ring-1 ring-inset ring-white/50 pointer-events-none" />
+            <div className="absolute inset-2 rounded-full bg-gradient-to-br from-white/25 via-transparent to-transparent pointer-events-none" />
+            <div className="absolute inset-2 rounded-full ring-1 ring-inset ring-white/40 pointer-events-none" />
           </div>
         </div>
 

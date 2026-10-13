@@ -57,9 +57,9 @@ export default function AdminLayout({ children }) {
 
         <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
             <div className="flex items-center gap-3">
-              <Image src="/logo-kr.png" alt="Logo KR" width={40} height={40} priority className="w-10 h-10 rounded-lg shadow-sm" />
+              <Image src="/logo-gifx.png" alt="Logo GIFX" width={40} height={40} priority className="w-10 h-10 rounded-full shadow-sm" />
               <div className="flex items-center gap-2">
-                  <span className="text-slate-900 font-bold text-lg tracking-wide whitespace-nowrap">Absensi KR</span>
+                  <span className="text-slate-900 font-bold text-lg tracking-wide whitespace-nowrap">Absensi GIFX</span>
                   <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-600 border border-blue-200 rounded">ADMIN</span>
               </div>
             </div>

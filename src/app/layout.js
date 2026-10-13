@@ -5,8 +5,8 @@ import { FeedbackProvider } from "@/components/Feedback";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Absensi Dashboard",
-  description: "Sistem Absensi Karyawan",
+  title: "Absensi GIFX",
+  description: "Sistem absensi karyawan GIFX",
 };
 
 export default function RootLayout({ children }) {

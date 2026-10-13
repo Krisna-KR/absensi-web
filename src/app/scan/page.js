@@ -247,8 +247,8 @@ export default function MobileScannerPage() {
         {/* HEADER */}
         <div className="flex justify-between items-center p-5 bg-white border-b border-slate-200 z-10">
           <div className="flex items-center gap-3">
-            <Image src="/logo-kr.png" alt="Logo KR" width={40} height={40} priority className="w-10 h-10 rounded-lg shadow-sm" />
-            <h1 className="font-bold text-lg text-slate-900 tracking-wide">Absensi Karyawan</h1>
+            <Image src="/logo-gifx.png" alt="Logo GIFX" width={40} height={40} priority className="w-10 h-10 rounded-full shadow-sm" />
+            <h1 className="font-bold text-lg text-slate-900 tracking-wide">Absensi GIFX</h1>
           </div>
           <div className="flex gap-2">
             <button onClick={handleInstallApp} className="px-3 py-1.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg shadow-sm border border-blue-100 flex items-center gap-1 active:bg-blue-100 transition-colors">

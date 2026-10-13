@@ -200,7 +200,7 @@ export default function LayarPresensi() {
       {/* ================= KIRI ================= */}
       <div className="min-h-0 flex flex-col gap-[2vh]">
         <section className="flex items-center gap-[1.8vh] px-[0.4vh] py-[0.6vh]">
-          <Image src="/logo-kr.png" alt="Logo KR" width={96} height={96} priority className="w-[6.4vh] h-[6.4vh] rounded-[1.4vh] shadow-sm shrink-0" />
+          <Image src="/logo-gifx.png" alt="Logo GIFX" width={96} height={96} priority className="w-[6.4vh] h-[6.4vh] rounded-full shadow-sm shrink-0" />
           <div className="min-w-0">
             <p className="text-[1.5vh] font-semibold uppercase tracking-[0.14em] text-blue-600 flex items-center gap-[0.5vh] leading-none">
               <MapPin className="w-[1.5vh] h-[1.5vh]" /> Presensi {namaLokasi}

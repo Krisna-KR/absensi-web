@@ -544,7 +544,7 @@ export default function KaryawanPage() {
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">NIP (Otomatis)</label>
-                <input type="text" value={editKar ? editKar.nip : 'KR' + tanggalWIB().slice(2, 4) + '####'} disabled className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
+                <input type="text" value={editKar ? editKar.nip : 'GIFX' + tanggalWIB().slice(2, 4) + '####'} disabled className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
               </div>
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Username (Otomatis)</label>
