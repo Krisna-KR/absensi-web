@@ -655,7 +655,7 @@ export default function KaryawanPage() {
                     <ErrText msg={errorsManual.keluar} />
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500">Status dihitung otomatis: lewat 08:00 = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Format 24 jam WIB.</p>
+                <p className="text-[11px] text-slate-500">Status dihitung otomatis: masuk lewat 09:00 = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Jam kerja 09:00–17:00, format 24 jam WIB.</p>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Alasan Input Manual</label>
                   <input type="text" placeholder="Contoh: HP rusak / kamera tidak bisa diakses" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />

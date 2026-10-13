@@ -22,17 +22,19 @@ const SERI = [
 
 const KELOMPOK = { Hadir: 'Hadir', Late: 'Late', Izin: 'Izin', Sakit: 'Izin', Cuti: 'Izin', Bolos: 'Bolos' };
 
-// Bin jam masuk per 15 menit (menit sejak 00:00 WIB)
+// Jam kerja kantor (status Tepat/Terlambat tetap dihitung database: masuk lewat 09.00 = Terlambat)
+const JAM_MASUK = 9 * 60;   // 09.00
+const jj = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}.${String(m % 60).padStart(2, '0')}`;
+
+// Bin jam masuk per 15 menit (menit sejak 00:00 WIB), 1,5 jam sebelum s/d 1 jam sesudah jam masuk
 const BIN_JAM = (() => {
-  const bins = [{ label: '≤07.00', judul: 'Sampai 07.00', sampai: 420 }];
-  for (let akhir = 435; akhir <= 570; akhir += 15) {
-    const jj = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}.${String(m % 60).padStart(2, '0')}`;
-    bins.push({ label: jj(akhir), judul: `${jj(akhir - 14)}–${jj(akhir)}`, sampai: akhir });
-  }
-  bins.push({ label: '>09.30', judul: 'Setelah 09.30', sampai: Infinity });
+  const awal = JAM_MASUK - 90, akhir = JAM_MASUK + 60;
+  const bins = [{ label: `≤${jj(awal)}`, judul: `Sampai ${jj(awal)}`, sampai: awal }];
+  for (let m = awal + 15; m <= akhir; m += 15) bins.push({ label: jj(m), judul: `${jj(m - 14)}–${jj(m)}`, sampai: m });
+  bins.push({ label: `>${jj(akhir)}`, judul: `Setelah ${jj(akhir)}`, sampai: Infinity });
   return bins;
 })();
-const INDEX_BATAS = BIN_JAM.findIndex(b => b.sampai === 480); // 08.00
+const INDEX_BATAS = BIN_JAM.findIndex(b => b.sampai === JAM_MASUK);
 
 function rentangDashboard(periode) {
   const hariIni = tanggalWIB();
@@ -80,7 +82,7 @@ function olahData(rows, periode) {
     const [hh, mm] = jamMenitWIB(r.waktu_masuk).split(':').map(Number);
     const menit = hh * 60 + mm;
     const i = BIN_JAM.findIndex(b => menit <= b.sampai);
-    hist[i].nilai[menit <= 480 ? 'Hadir' : 'Late']++;
+    hist[i].nilai[r.status === 'Late' ? 'Late' : 'Hadir']++;
   });
 
   // Ketepatan waktu per tim
@@ -236,12 +238,12 @@ export default function Dashboard() {
         <Kartu judul="Jam absen masuk" sub={`Sebaran per 15 menit, ${rentang.label.toLowerCase()}`}
           aksi={<Legenda seri={[{ key: 'Hadir', label: 'Tepat', warna: WARNA_STATUS.Hadir }, { key: 'Late', label: 'Telat', warna: WARNA_STATUS.Late }]} />}>
           {loading ? <div className="h-[200px] bg-slate-50 rounded-lg animate-pulse" /> : d.adaJam ? (
-            <GrafikBatang data={d.hist} tinggi={200} garisAcuan={{ setelahIndex: INDEX_BATAS, label: 'Batas 08.00' }}
+            <GrafikBatang data={d.hist} tinggi={200} garisAcuan={{ setelahIndex: INDEX_BATAS, label: `Batas ${jj(JAM_MASUK)}` }}
               seri={[{ key: 'Hadir', label: 'Tepat waktu', warna: WARNA_STATUS.Hadir }, { key: 'Late', label: 'Terlambat', warna: WARNA_STATUS.Late }]} />
           ) : <Kosong />}
         </Kartu>
 
-        <Kartu judul="Ketepatan waktu per tim" sub={`Hari kerja dengan absen masuk sampai 08.00, ${rentang.label.toLowerCase()}`}>
+        <Kartu judul="Ketepatan waktu per tim" sub={`Hari kerja dengan absen masuk sampai ${jj(JAM_MASUK)}, ${rentang.label.toLowerCase()}`}>
           {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.perTim.length ? (
             <DaftarBatang items={d.perTim} warna={WARNA_STATUS.Hadir} maks={100} />
           ) : <Kosong />}
