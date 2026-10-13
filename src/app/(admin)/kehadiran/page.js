@@ -14,7 +14,7 @@ const FILTER_STATUS = [
   { key: 'Hadir', label: 'Tepat Waktu', cocok: r => r.status === 'Hadir' },
   { key: 'Late', label: 'Terlambat', cocok: r => r.status === 'Late' },
   { key: 'izin', label: 'Izin / Sakit / Cuti', cocok: r => ['Izin', 'Sakit', 'Cuti'].includes(r.status) },
-  { key: 'Bolos', label: 'Bolos', cocok: r => r.status === 'Bolos' },
+  { key: 'Bolos', label: 'Alpha', cocok: r => r.status === 'Bolos' },
   { key: 'Belum Absen', label: 'Belum Absen', cocok: r => r.status === 'Belum Absen' },
   { key: 'Libur', label: 'Libur', cocok: r => r.status === 'Libur' },
 ];

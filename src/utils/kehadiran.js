@@ -16,7 +16,7 @@ export const STATUS_KEHADIRAN = {
   'Sakit':       { label: 'Sakit',       cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   'Cuti':        { label: 'Cuti',        cls: 'bg-violet-50 text-violet-700 border-violet-200' },
   'Libur':       { label: 'Libur',       cls: 'bg-slate-100 text-slate-500 border-slate-200' },
-  'Bolos':       { label: 'Bolos',       cls: 'bg-red-50 text-red-700 border-red-200' },
+  'Bolos':       { label: 'Alpha',       cls: 'bg-red-50 text-red-700 border-red-200' },
   'Belum Absen': { label: 'Belum Absen', cls: 'bg-white text-slate-500 border-slate-300 border-dashed' },
 };
 

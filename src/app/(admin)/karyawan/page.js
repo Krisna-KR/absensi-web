@@ -303,7 +303,7 @@ export default function KaryawanPage() {
       absensiId: abs?.id || null,
       izinId: izin?.id || null,
       info: abs ? `Sudah ada absensi (${STATUS_KEHADIRAN[abs.status]?.label || abs.status})${abs.updated_at ? `, terakhir diubah ${formatTanggalWaktu(abs.updated_at)}` : ''}.`
-          : izin ? `Tercatat ${izin.jenis} (${izin.status_approval || 'Pending'}).` : 'Belum ada data. Kalau tanggal ini hari kerja dan tetap kosong, statusnya Bolos.',
+          : izin ? `Tercatat ${izin.jenis} (${izin.status_approval || 'Pending'}).` : 'Belum ada data. Kalau tanggal ini hari kerja dan tetap kosong, statusnya Alpha.',
     });
     setShowManual(true);
   };
@@ -360,7 +360,7 @@ export default function KaryawanPage() {
     if (!m.absensiId && !m.izinId) return;
     const ok = await konfirmasi({
       judul: `Kosongkan data ${formatTanggal(m.tanggal)}?`,
-      pesan: `Semua catatan ${m.kar.nama_lengkap} di tanggal ini terhapus. Kalau tanggal ini hari kerja, statusnya jadi Bolos.`,
+      pesan: `Semua catatan ${m.kar.nama_lengkap} di tanggal ini terhapus. Kalau tanggal ini hari kerja, statusnya jadi Alpha.`,
       tombolYa: 'Kosongkan', nada: 'bahaya',
     });
     if (!ok) return;

@@ -397,7 +397,7 @@ export default function MobileScannerPage() {
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Masuk</p><p className="text-base text-blue-600">{rekap.masuk}</p></div>
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Izin</p><p className="text-base text-slate-700">{rekap.izin}</p></div>
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Telat</p><p className="text-amber-500 text-base">{rekap.telat}</p></div>
-                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Bolos</p><p className="text-rose-600 text-base">{rekap.bolos}</p></div>
+                   <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Alpha</p><p className="text-rose-600 text-base">{rekap.bolos}</p></div>
                 </div>
              </div>
           </div>

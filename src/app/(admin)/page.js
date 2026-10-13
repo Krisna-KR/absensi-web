@@ -17,7 +17,7 @@ const SERI = [
   { key: 'Hadir', label: 'Tepat waktu', warna: WARNA_STATUS.Hadir },
   { key: 'Late', label: 'Terlambat', warna: WARNA_STATUS.Late },
   { key: 'Izin', label: 'Izin / Sakit / Cuti', warna: WARNA_STATUS.Izin },
-  { key: 'Bolos', label: 'Bolos', warna: WARNA_STATUS.Bolos },
+  { key: 'Bolos', label: 'Alpha', warna: WARNA_STATUS.Bolos },
 ];
 
 const KELOMPOK = { Hadir: 'Hadir', Late: 'Late', Izin: 'Izin', Sakit: 'Izin', Cuti: 'Izin', Bolos: 'Bolos' };
@@ -161,7 +161,7 @@ export default function Dashboard() {
     { key: 'Hadir', judul: 'Tepat waktu', icon: Users },
     { key: 'Late', judul: 'Terlambat', icon: Clock },
     { key: 'Izin', judul: 'Izin / Sakit / Cuti', icon: CalendarDays },
-    { key: 'Bolos', judul: 'Bolos', icon: UserX },
+    { key: 'Bolos', judul: 'Alpha', icon: UserX },
   ];
 
   return (
