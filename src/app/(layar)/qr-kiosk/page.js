@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { MapPin, Maximize, Sunrise, Trophy, CheckCircle2, Clock, LogOut } from 'lucide-react';
+import { MapPin, Maximize, History, Trophy, CheckCircle2, Clock, LogIn, LogOut } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { hapusToken, kodeError } from '@/utils/sesi';
 import { pesanError } from '@/utils/pesanError';
@@ -17,6 +17,7 @@ const LAMA_BUBBLE_MS = 3000;
 const KUNCI_LOKASI = 'kiosk_lokasi';
 
 const fmtHariTanggal = new Intl.DateTimeFormat('id-ID', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' });
+const fmtJam = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
 const fmtBulan = new Intl.DateTimeFormat('id-ID', { timeZone: TZ, month: 'long' });
 
 const MEDALI = [
@@ -56,6 +57,23 @@ function Kartu({ ikon: Ikon, judul, sub, children }) {
       </header>
       <ol className="flex-1 min-h-0 flex flex-col">{children}</ol>
     </section>
+  );
+}
+
+// Jam digital (state sendiri supaya detik berjalan tanpa merender ulang seluruh layar)
+function JamDigital() {
+  const [kini, setKini] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setKini(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const [jam, menit, detik] = fmtJam.format(kini).split(':');
+  return (
+    <p className="ml-auto shrink-0 flex items-baseline gap-[0.6vh] leading-none tabular-nums" aria-label={`Jam ${jam}.${menit}`}>
+      <span className="text-[5vh] font-bold text-slate-900 tracking-tight">{jam}:{menit}</span>
+      <span className="text-[2.4vh] font-semibold text-slate-400">{detik}</span>
+      <span className="text-[1.5vh] font-semibold text-blue-600 ml-[0.4vh]">WIB</span>
+    </p>
   );
 }
 
@@ -207,23 +225,29 @@ export default function LayarPresensi() {
             </p>
             <p className="mt-[0.7vh] text-[3.6vh] font-bold text-slate-900 leading-none truncate">{fmtHariTanggal.format(sekarang)}</p>
           </div>
+          <JamDigital />
         </section>
 
-        <Kartu ikon={Sunrise} judul="Absen pertama hari ini" sub="Urutan scan masuk">
-          {papan.top.length === 0 && <Kosong teks="Belum ada yang absen masuk hari ini." />}
-          {papan.top.map((t, i) => (
-            <li key={`${t.nama}-${t.waktu_masuk}`} className="flex-1 min-h-0 flex items-center gap-[1.6vh] border-t border-slate-100 first:border-t-0">
-              <span className="w-[2.4vh] text-[1.9vh] font-bold text-slate-300 tabular-nums">{i + 1}</span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[2.1vh] font-semibold text-slate-900 truncate leading-tight">{t.nama}</span>
-                <span className="block text-[1.4vh] text-slate-400 truncate leading-tight">{t.keterangan}</span>
-              </span>
-              <span className={`shrink-0 text-[1.3vh] font-semibold px-[1vh] py-[0.35vh] rounded-full ${t.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700'}`}>
-                {t.status === 'Late' ? `Telat ${t.telat_menit}m` : 'Tepat waktu'}
-              </span>
-              <span className="shrink-0 w-[7vh] text-right text-[2.3vh] font-bold text-slate-900 tabular-nums">{formatJam(t.waktu_masuk)}</span>
-            </li>
-          ))}
+        <Kartu ikon={History} judul="Absen terakhir" sub="5 scan terbaru hari ini">
+          {papan.top.length === 0 && <Kosong teks="Belum ada yang scan hari ini." />}
+          {papan.top.map((t) => {
+            const masuk = t.jenis === 'MASUK';
+            const IkonJenis = masuk ? LogIn : LogOut;
+            const label = !masuk ? (t.status === 'TANPA_MASUK' ? 'Pulang · tanpa masuk' : 'Pulang')
+              : t.status === 'Late' ? `Telat ${t.telat_menit}m` : 'Tepat waktu';
+            const warna = !masuk ? 'bg-blue-50 text-blue-700' : t.status === 'Late' ? 'bg-orange-50 text-orange-700' : 'bg-emerald-50 text-emerald-700';
+            return (
+              <li key={t.id} className="flex-1 min-h-0 flex items-center gap-[1.6vh] border-t border-slate-100 first:border-t-0">
+                <IkonJenis className={`w-[2.2vh] h-[2.2vh] shrink-0 ${masuk ? 'text-slate-300' : 'text-blue-300'}`} aria-label={masuk ? 'Masuk' : 'Pulang'} />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[2.1vh] font-semibold text-slate-900 truncate leading-tight">{t.nama}</span>
+                  <span className="block text-[1.4vh] text-slate-400 truncate leading-tight">{t.keterangan}</span>
+                </span>
+                <span className={`shrink-0 text-[1.3vh] font-semibold px-[1vh] py-[0.35vh] rounded-full ${warna}`}>{label}</span>
+                <span className="shrink-0 w-[7vh] text-right text-[2.3vh] font-bold text-slate-900 tabular-nums">{formatJam(t.waktu)}</span>
+              </li>
+            );
+          })}
           {papan.top.length > 0 && <BarisKosong n={5 - papan.top.length} />}
         </Kartu>
 
