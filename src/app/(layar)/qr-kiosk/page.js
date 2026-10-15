@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
-import { MapPin, Maximize, History, Trophy, CheckCircle2, Clock, LogIn, LogOut } from 'lucide-react';
+import { MapPin, Maximize, History, Trophy, CheckCircle2, Clock, LogIn, LogOut, UserRoundCheck, Users } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { hapusToken, kodeError } from '@/utils/sesi';
 import { pesanError } from '@/utils/pesanError';
@@ -15,6 +15,8 @@ const INTERVAL_SCAN_MS = 3000;     // cek scan baru
 const INTERVAL_PAPAN_MS = 60_000;  // segarkan daftar & leaderboard
 const LAMA_BUBBLE_MS = 3000;
 const KUNCI_LOKASI = 'kiosk_lokasi';
+// Kecepatan running text: 8% tinggi layar per detik (sekitar 85 px/detik di TV 1080p)
+const KECEPATAN_VH_PER_DETIK = 8;
 
 const fmtHariTanggal = new Intl.DateTimeFormat('id-ID', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' });
 const fmtJam = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
@@ -25,6 +27,53 @@ const MEDALI = [
   'bg-gradient-to-br from-slate-100 to-slate-400 text-slate-800 ring-slate-300/70',
   'bg-gradient-to-br from-orange-200 to-orange-500 text-orange-950 ring-orange-300/70',
 ];
+
+// Warna persen kehadiran tim
+const warnaPersen = (p) => (p >= 80 ? { isi: 'bg-emerald-100', teks: 'text-emerald-700' } : p >= 50 ? { isi: 'bg-amber-100', teks: 'text-amber-700' } : { isi: 'bg-rose-100', teks: 'text-rose-700' });
+
+function ChipTim({ t }) {
+  const w = warnaPersen(t.persen ?? 0);
+  return (
+    <span className="relative shrink-0 inline-flex items-center gap-[1.2vh] h-[4.4vh] pl-[1.6vh] pr-[1vh] rounded-full border border-slate-200 bg-white overflow-hidden">
+      <span className={`absolute inset-y-0 left-0 ${w.isi}`} style={{ width: `${t.persen ?? 0}%` }} aria-hidden="true" />
+      <span className="relative text-[1.9vh] font-bold text-slate-900 whitespace-nowrap">{t.nama}</span>
+      <span className="relative text-[1.9vh] font-semibold text-slate-600 tabular-nums">{t.hadir}/{t.total}</span>
+      <span className={`relative text-[1.7vh] font-bold tabular-nums px-[0.9vh] py-[0.2vh] rounded-full bg-white/80 ${w.teks}`}>{t.persen ?? 0}%</span>
+    </span>
+  );
+}
+
+// Running text bergerak dari kiri ke kanan. Isi digandakan supaya berputar tanpa jeda.
+function RunningTim({ tim }) {
+  const trackRef = useRef(null);
+  const [durasi, setDurasi] = useState(40);
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const lebarSatuPutaran = el.scrollWidth / 2;
+      const pxPerDetik = (window.innerHeight * KECEPATAN_VH_PER_DETIK) / 100;
+      setDurasi(Math.max(12, lebarSatuPutaran / pxPerDetik));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Tiap separuh berisi minimal 8 chip supaya selalu lebih lebar dari layar (tidak ada celah kosong)
+  const ulang = Math.max(1, Math.ceil(8 / tim.length));
+  const isi = Array.from({ length: ulang }, (_, u) => tim.map(t => ({ ...t, k: `${u}-${t.nama}` }))).flat();
+  const salinan = (kunci) => (
+    <div key={kunci} className="flex shrink-0 items-center gap-[2.4vh] pr-[2.4vh]" aria-hidden={kunci === 'b'}>
+      {isi.map(t => <ChipTim key={`${kunci}-${t.k}`} t={t} />)}
+    </div>
+  );
+  return (
+    <div className="relative flex-1 min-w-0 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_6%,black_94%,transparent)]">
+      <div ref={trackRef} className="flex w-max animasi-jalan-kanan motion-reduce:animate-none" style={{ animationDuration: `${durasi}s` }}>
+        {salinan('a')}{salinan('b')}
+      </div>
+    </div>
+  );
+}
 
 function teksBubble(s) {
   if (s.jenis === 'MASUK') {
@@ -89,7 +138,7 @@ export default function LayarPresensi() {
   const [countdown, setCountdown] = useState(INTERVAL_QR);
   const [galat, setGalat] = useState('');
   const [sekarang, setSekarang] = useState(() => new Date());
-  const [papan, setPapan] = useState({ top: [], papan: [], hari_kerja: 0, min_hari: 0 });
+  const [papan, setPapan] = useState({ top: [], papan: [], hari_kerja: 0, tim: [], ob: [] });
   const [bubble, setBubble] = useState(null);
   const [antre, setAntre] = useState(0);
   const [layarPenuh, setLayarPenuh] = useState(false);
@@ -213,7 +262,7 @@ export default function LayarPresensi() {
   const persenQr = (countdown / INTERVAL_QR) * 100;
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-slate-100 p-[2.4vh] grid grid-cols-[minmax(0,40fr)_minmax(0,60fr)] gap-[2.4vh] select-none">
+    <div className="h-screen w-screen overflow-hidden bg-slate-100 p-[2.4vh] grid grid-cols-[minmax(0,40fr)_minmax(0,60fr)] grid-rows-[minmax(0,1fr)_auto] gap-[2.4vh] select-none">
 
       {/* ================= KIRI ================= */}
       <div className="min-h-0 flex flex-col gap-[2vh]">
@@ -302,7 +351,7 @@ export default function LayarPresensi() {
         <h1 className="text-[3.4vh] font-bold text-slate-900 text-center leading-tight">Scan untuk absen</h1>
         <p className="text-[1.8vh] text-slate-500 text-center mt-[0.6vh]">Buka aplikasi absensi di HP, lalu arahkan kamera ke kode ini.</p>
 
-        <div className="mt-[2.8vh] h-[58vh] aspect-square max-w-full p-[2.2vh] rounded-[2vh] bg-white ring-1 ring-slate-200 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.18)]">
+        <div className="mt-[2.4vh] h-[52vh] aspect-square max-w-full p-[2.2vh] rounded-[2vh] bg-white ring-1 ring-slate-200 shadow-[0_10px_40px_-12px_rgba(15,23,42,0.18)]">
           {qr ? (
             <QRCodeSVG value={qr} level="M" marginSize={0} className="w-full h-full" />
           ) : (
@@ -323,9 +372,34 @@ export default function LayarPresensi() {
         {galat && qr && <p className="mt-[1.2vh] text-[1.6vh] text-rose-600">{galat}</p>}
       </section>
 
-      {/* ================= BUBBLE SCAN (kiri bawah, khusus lokasi ini) ================= */}
+      {/* ================= BAR BAWAH: OB bertugas + kehadiran tim ================= */}
+      <section className="min-w-0 h-[7.6vh] bg-white border border-slate-200/80 rounded-[2vh] shadow-sm flex items-center gap-[1.4vh] px-[2vh]">
+        <span className="w-[4.4vh] h-[4.4vh] rounded-full bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><UserRoundCheck className="w-[2.4vh] h-[2.4vh]" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[1.3vh] font-semibold uppercase tracking-[0.12em] text-violet-600 leading-none">OB bertugas</p>
+          {papan.ob?.length ? (
+            <p className="mt-[0.6vh] flex items-center gap-[1.6vh] text-[1.9vh] text-slate-900 leading-tight overflow-hidden whitespace-nowrap">
+              {papan.ob.map(o => (
+                <span key={`${o.nama}-${o.masuk}`} className="inline-flex items-center gap-[0.7vh] min-w-0" title={`${o.shift} ${o.jam}`}>
+                  <b className="font-semibold truncate">{o.nama}</b>
+                  <span className="shrink-0 text-[1.4vh] font-semibold text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-[0.8vh] py-[0.1vh]">{o.shift}</span>
+                </span>
+              ))}
+            </p>
+          ) : <p className="mt-[0.5vh] text-[1.7vh] text-slate-400 leading-tight">Belum ada OB yang absen masuk.</p>}
+        </div>
+      </section>
+      <section className="min-w-0 h-[7.6vh] bg-white border border-slate-200/80 rounded-[2vh] shadow-sm flex items-center gap-[1.6vh] pl-[2vh] overflow-hidden">
+        <span className="shrink-0 flex items-center gap-[1vh]">
+          <Users className="w-[2.4vh] h-[2.4vh] text-blue-600" />
+          <span className="text-[1.3vh] font-semibold uppercase tracking-[0.12em] text-blue-600 leading-tight">Hadir<br />per tim</span>
+        </span>
+        {papan.tim?.length ? <RunningTim tim={papan.tim} /> : <p className="text-[1.7vh] text-slate-400">Belum ada data tim.</p>}
+      </section>
+
+      {/* ================= BUBBLE SCAN (kiri bawah, di atas bar, khusus lokasi ini) ================= */}
       {bubble && isiBubble && (
-        <div aria-live="polite" className="fixed left-[3vh] bottom-[3vh] z-50 w-[30vw] max-w-[560px]">
+        <div aria-live="polite" className="fixed left-[3vh] bottom-[12.5vh] z-50 w-[30vw] max-w-[560px]">
           <div key={bubble.id}
             className={`animasi-bubble flex items-center gap-[1.5vh] bg-white/95 backdrop-blur border border-slate-200 rounded-[2vh] shadow-2xl shadow-slate-900/20 p-[1.6vh] pr-[2.2vh] transition-all duration-300 ${bubble.tampil ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-[2vh]'}`}>
             <span className={`w-[5.4vh] h-[5.4vh] rounded-full ${isiBubble.warna} text-white flex items-center justify-center shrink-0`}>

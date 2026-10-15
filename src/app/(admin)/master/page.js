@@ -1,7 +1,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, Trash2, Edit2, MapPin, Building2, BadgeCheck, Check, X, Lock } from 'lucide-react';
+import { Plus, Trash2, Edit2, MapPin, Building2, BadgeCheck, Check, X, Lock, Clock } from 'lucide-react';
+import InputRupiah from '@/components/InputRupiah';
+import { formatRupiah } from '@/utils/rupiah';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
 
@@ -16,6 +18,8 @@ const ATURAN_DEPT = {
   Backoffice: 'Tidak punya atasan. Job role yang ditandai "bisa jadi atasan" boleh membawahi Marketing.',
 };
 
+const JABATAN_KOSONG = { lama: null, nama: '', id_departemen: '', bisa_jadi_atasan: false, allowance: null, pakai_shift: false };
+
 const kelasInput = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100';
 
 export default function MasterDataPage() {
@@ -29,7 +33,7 @@ export default function MasterDataPage() {
   const muatUlang = () => setVersi(v => v + 1);
 
   const [formLokasi, setFormLokasi] = useState({ id: null, nama_cabang: '', alamat: '' });
-  const [formJabatan, setFormJabatan] = useState({ lama: null, nama: '', id_departemen: '', bisa_jadi_atasan: false });
+  const [formJabatan, setFormJabatan] = useState(JABATAN_KOSONG);
   const [simpan, setSimpan] = useState(false);
 
   useEffect(() => {
@@ -38,7 +42,7 @@ export default function MasterDataPage() {
       const [l, d, j, k] = await Promise.all([
         supabase.from('master_lokasi').select('id, nama_cabang, alamat').order('nama_cabang'),
         supabase.from('master_departemen').select('id, nama_departemen').order('nama_departemen'),
-        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan').order('nama'),
+        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama'),
         supabase.from('karyawan').select('id, id_lokasi, id_departemen, jabatan, is_aktif'),
       ]);
       if (batal) return;
@@ -87,14 +91,17 @@ export default function MasterDataPage() {
     const nama = formJabatan.nama.trim();
     if (!nama || !formJabatan.id_departemen) return;
     setSimpan(true);
-    const payload = { nama, bisa_jadi_atasan: formJabatan.id_departemen === deptBackoffice && formJabatan.bisa_jadi_atasan };
+    const payload = {
+      nama, bisa_jadi_atasan: formJabatan.id_departemen === deptBackoffice && formJabatan.bisa_jadi_atasan,
+      allowance: formJabatan.allowance || 0, pakai_shift: formJabatan.pakai_shift,
+    };
     const { error } = formJabatan.lama
       ? await supabase.from('master_jabatan').update(payload).eq('nama', formJabatan.lama)
       : await supabase.from('master_jabatan').insert({ ...payload, id_departemen: formJabatan.id_departemen });
     setSimpan(false);
     if (error) { toast(pesanError(error), 'gagal'); return; }
     toast(formJabatan.lama ? `Job role ${nama} tersimpan.` : `Job role ${nama} ditambahkan.`);
-    setFormJabatan({ lama: null, nama: '', id_departemen: '', bisa_jadi_atasan: false }); muatUlang();
+    setFormJabatan(JABATAN_KOSONG); muatUlang();
   };
 
   const hapusJabatan = async (j) => {
@@ -219,8 +226,18 @@ export default function MasterDataPage() {
                 onChange={e => setFormJabatan({ ...formJabatan, bisa_jadi_atasan: e.target.checked })} />
               <span><b className="font-semibold">Bisa jadi atasan</b><br />Hanya untuk job role Backoffice. Karyawan dengan job role ini bisa membawahi Marketing.</span>
             </label>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Allowance per bulan</label>
+              <InputRupiah value={formJabatan.allowance} onChange={v => setFormJabatan({ ...formJabatan, allowance: v })} className="mt-1" />
+              <p className="text-xs text-slate-500 mt-1">Nominal default semua karyawan dengan job role ini. Bisa diganti per karyawan di halaman Karyawan.</p>
+            </div>
+            <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={formJabatan.pakai_shift}
+                onChange={e => setFormJabatan({ ...formJabatan, pakai_shift: e.target.checked })} />
+              <span><b className="font-semibold">Pakai shift</b><br />Karyawan memilih shift saat scan masuk: Shift 1 07.00–15.00 atau Shift 2 12.00–20.00. Telat dihitung dari jam masuk shift.</span>
+            </label>
             <div className="flex gap-2 pt-1">
-              {formJabatan.lama && <button type="button" onClick={() => setFormJabatan({ lama: null, nama: '', id_departemen: '', bisa_jadi_atasan: false })} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Batal</button>}
+              {formJabatan.lama && <button type="button" onClick={() => setFormJabatan(JABATAN_KOSONG)} className="px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">Batal</button>}
               <button type="submit" disabled={simpan || !formJabatan.nama.trim() || !formJabatan.id_departemen} className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-40">
                 {formJabatan.lama ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{formJabatan.lama ? 'Simpan' : 'Tambah'}
               </button>
@@ -234,6 +251,7 @@ export default function MasterDataPage() {
                   <th className="px-5 py-3 font-semibold">Job role</th>
                   <th className="px-5 py-3 font-semibold">Departemen</th>
                   <th className="px-5 py-3 font-semibold text-center">Bisa jadi atasan</th>
+                  <th className="px-5 py-3 font-semibold text-right">Allowance</th>
                   <th className="px-5 py-3 font-semibold text-center">Karyawan aktif</th>
                   <th className="px-5 py-3"></th>
                 </tr>
@@ -241,14 +259,18 @@ export default function MasterDataPage() {
               <tbody className="divide-y divide-slate-100">
                 {jabatan.map(j => (
                   <tr key={j.nama} className={formJabatan.lama === j.nama ? 'bg-blue-50/50' : 'hover:bg-slate-50'}>
-                    <td className="px-5 py-3 font-semibold text-slate-900">{j.nama}</td>
+                    <td className="px-5 py-3 font-semibold text-slate-900">
+                      {j.nama}
+                      {j.pakai_shift && <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded"><Clock className="w-3 h-3" />Shift</span>}
+                    </td>
                     <td className="px-5 py-3">{namaDept(j.id_departemen)}</td>
                     <td className="px-5 py-3 text-center">
                       {j.bisa_jadi_atasan ? <span className="inline-flex items-center gap-1 text-emerald-700 text-xs font-semibold"><Check className="w-4 h-4" />Ya</span> : <span className="text-slate-300"><X className="w-4 h-4 inline" /></span>}
                     </td>
+                    <td className="px-5 py-3 text-right tabular-nums whitespace-nowrap">{j.allowance ? formatRupiah(j.allowance) : <span className="text-slate-300">Belum diisi</span>}</td>
                     <td className="px-5 py-3 text-center font-semibold text-slate-900 tabular-nums">{hitung(k => k.jabatan === j.nama)}</td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => setFormJabatan({ lama: j.nama, nama: j.nama, id_departemen: j.id_departemen, bisa_jadi_atasan: j.bisa_jadi_atasan })} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" title="Ubah"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => setFormJabatan({ lama: j.nama, nama: j.nama, id_departemen: j.id_departemen, bisa_jadi_atasan: j.bisa_jadi_atasan, allowance: j.allowance || null, pakai_shift: !!j.pakai_shift })} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" title="Ubah"><Edit2 className="w-4 h-4" /></button>
                       <button onClick={() => hapusJabatan(j)} className="p-2 rounded-lg text-rose-500 hover:bg-rose-50" title="Hapus"><Trash2 className="w-4 h-4" /></button>
                     </td>
                   </tr>

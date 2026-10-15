@@ -2,7 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
-import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus } from 'lucide-react';
+import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight } from 'lucide-react';
+import NotifAllowance from '@/components/NotifAllowance';
 import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
 import { hitungStatus, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
@@ -26,7 +27,14 @@ const HASIL_GAGAL = {
   SUDAH_MASUK: ['Kamu sudah absen masuk', 'Absen masuk hari ini sudah tercatat. Absen pulang dibuka mulai jam 12.00 WIB.'],
   SUDAH_PULANG: ['Kamu sudah absen pulang', 'Absen pulang hari ini sudah tercatat. Sampai jumpa besok.'],
   SESI_HABIS: ['Sesi berakhir', 'Login lagi untuk melanjutkan absen.'],
+  PILIH_SHIFT: ['Pilih shift dulu', 'Kembali ke dasbor, tekan Check In, lalu pilih Shift 1 atau Shift 2.'],
 };
+// Pesan khusus karyawan dengan shift (OB)
+const HASIL_GAGAL_SHIFT = {
+  BELUM_BUKA: ['Absen belum dibuka', 'Absen dibuka mulai jam 06.00 WIB.'],
+  SUDAH_MASUK: ['Kamu baru saja absen masuk', 'Absen pulang bisa dilakukan minimal 1 jam setelah absen masuk.'],
+};
+const IKON_SHIFT = { 1: Sun, 2: Sunset };
 
 // Pendaftaran mandiri dari HP. Ubah ke true untuk membuka lagi
 // (fungsi fn_register_karyawan di database juga harus di-GRANT ulang).
@@ -51,6 +59,10 @@ export default function MobileScannerPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [hasilScan, setHasilScan] = useState(null); // { sukses, judul, pesan }
+  const [tab, setTab] = useState('home');           // 'home' | 'notif'
+  const [allowance, setAllowance] = useState([]);
+  const [pilihShift, setPilihShift] = useState(false);
+  const shiftRef = useRef(null);
   const { info, konfirmasi } = useFeedback();
 
   // State Registrasi
@@ -83,7 +95,7 @@ export default function MobileScannerPage() {
   const keluarSesi = (pesan) => {
     hapusToken('karyawan');
     try { localStorage.removeItem('karyawan_data'); } catch { /* abaikan */ }
-    setKaryawan(null); setTodayAbsen(null); setStep(1);
+    setKaryawan(null); setTodayAbsen(null); setStep(1); setTab('home'); setAllowance([]);
     if (pesan) info({ judul: 'Silakan login lagi', pesan });
   };
 
@@ -102,20 +114,38 @@ export default function MobileScannerPage() {
     setRekap({ masuk: c.Hadir + c.Late, izin: c.Izin + c.Sakit + c.Cuti, telat: c.Late, bolos: c.Bolos });
   };
 
+  const fetchAllowance = async () => {
+    const { data, error } = await supabase.rpc('fn_allowance_saya');
+    if (error) {
+      if (kodeError(error) === 'SESI_HABIS') keluarSesi('Sesimu berakhir. Login lagi.');
+      return;
+    }
+    setAllowance(data || []);
+  };
+
+  // Cek notifikasi allowance tiap 1 menit selama aplikasi terbuka
+  const idKaryawan = karyawan?.id;
+  useEffect(() => {
+    if (!idKaryawan) return;
+    const t = setInterval(fetchAllowance, 60_000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idKaryawan]);
+
   useEffect(() => {
     // Lanjutkan sesi yang tersimpan di HP
     const checkSesi = async () => {
       if (!ambilToken('karyawan')) return;
       const { data, error } = await supabase.rpc('fn_sesi_karyawan');
       if (error || !data) { keluarSesi(); return; }
-      setKaryawan(data); setStep(2); fetchDataHariIni();
+      setKaryawan(data); setStep(2); fetchDataHariIni(); fetchAllowance();
     };
     checkSesi();
 
     // Pilihan untuk form daftar
     const fetchOpsi = async () => {
       const { data } = await supabase.rpc('fn_opsi_registrasi');
-      if (data) setOpsi(data);
+      if (data?.jabatan) setOpsi(data);
     };
     fetchOpsi();
 
@@ -133,7 +163,8 @@ export default function MobileScannerPage() {
     });
     if (error) { setMessage(PESAN_KODE[kodeError(error)] || pesanError(error)); setLoading(false); return; }
     simpanToken('karyawan', data.token);
-    setKaryawan(data.karyawan); await fetchDataHariIni(); setStep(2); setLoading(false);
+    const { data: sesi } = await supabase.rpc('fn_sesi_karyawan');
+    setKaryawan(sesi || data.karyawan); await fetchDataHariIni(); fetchAllowance(); setStep(2); setLoading(false);
   };
 
   // =================== LOGIKA PENDAFTARAN (REGISTER) ===================
@@ -189,23 +220,31 @@ export default function MobileScannerPage() {
     } catch { setMessage('Kamera belum bisa dibuka. Izinkan akses kamera untuk situs ini di pengaturan browser, lalu coba lagi.'); }
   };
 
-  const openScanner = () => { setMessage(''); setStep(3); setTimeout(() => startCamera(cameraMode), 300); };
+  const bukaKamera = () => { setMessage(''); setStep(3); setTimeout(() => startCamera(cameraMode), 300); };
+  // Karyawan dengan shift (OB) memilih shift dulu sebelum absen masuk
+  const openScanner = () => {
+    shiftRef.current = null;
+    if (karyawan?.pakai_shift && !todayAbsen?.waktu_masuk && !todayAbsen?.waktu_keluar) { setPilihShift(true); return; }
+    bukaKamera();
+  };
+  const mulaiDenganShift = (no) => { shiftRef.current = no; setPilihShift(false); bukaKamera(); };
   const toggleCamera = () => { const newMode = cameraMode === 'environment' ? 'user' : 'environment'; setCameraMode(newMode); startCamera(newMode); };
   const batalScanner = async () => { if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) { await html5QrCodeRef.current.stop().catch(() => {}); html5QrCodeRef.current.clear(); } setStep(2); };
 
   // QR, jam, dan status divalidasi oleh database (fn_absen), bukan oleh HP
   const prosesAbsensi = async (qrData) => {
     setLoading(true); setHasilScan(null); setStep(4);
-    const { data, error } = await supabase.rpc('fn_absen', { p_qr: qrData });
+    const { data, error } = await supabase.rpc('fn_absen', { p_qr: qrData, p_shift: shiftRef.current });
     if (error) {
       const kode = kodeError(error);
-      const [judul, pesan] = HASIL_GAGAL[kode] || ['Absen belum tercatat', pesanError(error)];
+      const [judul, pesan] = (karyawan?.pakai_shift && HASIL_GAGAL_SHIFT[kode]) || HASIL_GAGAL[kode] || ['Absen belum tercatat', pesanError(error)];
       setHasilScan({ sukses: false, judul, pesan });
       setLoading(false);
       if (kode === 'SESI_HABIS') keluarSesi('Sesimu berakhir. Login lagi untuk absen.');
       return;
     }
     const jam = formatJamDetik(data.waktu);
+    if (data.shift) setKaryawan(k => ({ ...k, shift_hari_ini: data.shift }));
     if (data.jenis === 'MASUK') {
       setHasilScan({
         sukses: true, judul: 'Absen masuk tercatat',
@@ -238,7 +277,12 @@ export default function MobileScannerPage() {
 
   const isSelesai = !!todayAbsen?.waktu_keluar;
   // Sebelum 12:00 dan belum ada data -> Check In; setelahnya -> Check Out (boleh tanpa absen masuk)
-  const isBisaMasuk = !todayAbsen?.waktu_masuk && !isSelesai && jamWIB() < 12;
+  // Karyawan dengan shift (OB): scan pertama = masuk kapan pun, berikutnya = pulang
+  const isBisaMasuk = karyawan?.pakai_shift
+    ? !todayAbsen?.waktu_masuk && !isSelesai
+    : !todayAbsen?.waktu_masuk && !isSelesai && jamWIB() < 12;
+  const shiftHariIni = (karyawan?.shift || []).find(sh => sh.no === karyawan?.shift_hari_ini);
+  const menungguApprove = allowance.filter(a => a.status === 'TERKIRIM').length;
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center text-slate-900 font-sans">
@@ -342,12 +386,24 @@ export default function MobileScannerPage() {
           </div>
         )}
 
+        {/* FASE 2: NOTIFIKASI ALLOWANCE */}
+        {step === 2 && tab === 'notif' && (
+          <NotifAllowance items={allowance} muat={fetchAllowance} konfirmasi={konfirmasi}
+            punyaTtd={!!karyawan?.punya_ttd} setPunyaTtd={(v) => setKaryawan(k => ({ ...k, punya_ttd: v }))}
+            onSesiHabis={() => keluarSesi('Sesimu berakhir. Login lagi.')} />
+        )}
+
         {/* FASE 2: DASHBOARD */}
-        {step === 2 && (
+        {step === 2 && tab === 'home' && (
           <div className="flex-1 flex flex-col items-center pt-8 px-6 pb-24 overflow-y-auto">
              <h2 className="text-3xl font-black text-slate-900">Absensi</h2>
              <p className="text-slate-500 text-sm mt-1 mb-8">Hi, {karyawan?.nama_lengkap}.</p>
              {message && <div className="w-full -mt-4 mb-6 p-3 bg-rose-50 text-rose-700 text-sm rounded-xl border border-rose-200">{message}</div>}
+             {menungguApprove > 0 && (
+               <button onClick={() => setTab('notif')} className="w-full -mt-4 mb-6 p-3 bg-amber-50 text-amber-800 text-sm rounded-xl border border-amber-200 flex items-center gap-2 text-left">
+                 <Wallet className="w-5 h-5 shrink-0" /><span className="flex-1"><b>{menungguApprove} allowance</b> menunggu persetujuanmu.</span><ChevronRight className="w-4 h-4" />
+               </button>
+             )}
 
              <div className="w-full bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-12">
                <div className="text-center mb-6">
@@ -356,6 +412,7 @@ export default function MobileScannerPage() {
                    {(STATUS_KEHADIRAN[todayAbsen?.status] || STATUS_KEHADIRAN['Belum Absen']).label}
                  </span>
                  {todayAbsen?.keterangan && <p className="text-xs text-slate-500 mt-2">{todayAbsen.keterangan}</p>}
+                 {shiftHariIni && <p className="text-xs font-semibold text-violet-700 mt-2">{shiftHariIni.nama} · {shiftHariIni.jam_masuk}–{shiftHariIni.jam_pulang}</p>}
                </div>
                <div className="flex justify-between text-center divide-x divide-slate-100">
                  <div className="flex-1">
@@ -438,12 +495,38 @@ export default function MobileScannerPage() {
           </div>
         )}
 
+        {/* PILIH SHIFT (OB) */}
+        {pilihShift && (
+          <div className="fixed inset-0 z-40 bg-slate-900/40 flex items-end justify-center" onClick={() => setPilihShift(false)}>
+            <div className="w-full max-w-md bg-white rounded-t-3xl p-6 pb-8 space-y-3" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-black text-slate-900">Pilih shift hari ini</h3>
+                <button onClick={() => setPilihShift(false)} aria-label="Tutup" className="p-1 text-slate-400"><X className="w-5 h-5" /></button>
+              </div>
+              <p className="text-sm text-slate-500">Telat dihitung dari jam mulai shift yang kamu pilih.</p>
+              {(karyawan?.shift || []).map(sh => {
+                const Ikon = IKON_SHIFT[sh.no] || Clock;
+                return (
+                  <button key={sh.no} onClick={() => mulaiDenganShift(sh.no)}
+                    className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-200 bg-slate-50 active:bg-blue-50 active:border-blue-300 text-left">
+                    <span className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center text-blue-600"><Ikon className="w-6 h-6" /></span>
+                    <span><span className="block font-bold text-slate-900">{sh.nama}</span><span className="block text-sm text-slate-500 tabular-nums">{sh.jam_masuk} – {sh.jam_pulang} WIB</span></span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* BOTTOM NAV */}
         {step === 2 && (
           <div className="absolute bottom-0 left-0 right-0 bg-white text-slate-400 flex justify-around items-center py-4 border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
-            <button className="flex flex-col items-center text-blue-600 transition-all"><LayoutGrid className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HOME</span></button>
+            <button onClick={() => setTab('home')} className={`flex flex-col items-center transition-all ${tab === 'home' ? 'text-blue-600' : 'hover:text-blue-600'}`}><LayoutGrid className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HOME</span></button>
             <button className="flex flex-col items-center transition-all hover:text-blue-600"><Clock className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HISTORY</span></button>
-            <button className="flex flex-col items-center transition-all hover:text-blue-600"><Bell className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">NOTIF</span></button>
+            <button onClick={() => { setTab('notif'); fetchAllowance(); }} className={`relative flex flex-col items-center transition-all ${tab === 'notif' ? 'text-blue-600' : 'hover:text-blue-600'}`}>
+              <Bell className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">NOTIF</span>
+              {menungguApprove > 0 && <span className="absolute -top-1.5 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{menungguApprove}</span>}
+            </button>
           </div>
         )}
       </div>

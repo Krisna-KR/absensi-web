@@ -1,16 +1,24 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/utils/supabase/client';
-import { Plus, Search, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp, UserX, UserCheck, MapPin } from 'lucide-react';
+import { Plus, Search, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp, UserX, UserCheck, MapPin, PenLine, Wallet } from 'lucide-react';
 import { tanggalWIB, jamMenitWIB, formatTanggal, formatTanggalWaktu } from '@/utils/waktu';
 import { STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
 import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
+import InputRupiah from '@/components/InputRupiah';
+import PadTtd from '@/components/PadTtd';
+import { formatRupiah } from '@/utils/rupiah';
 
-const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '' };
+const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', pakaiKhusus: false, allowance_khusus: null };
 // Kolom password tidak bisa dibaca lewat API, jadi kolom disebut satu per satu
-const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at';
+const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at, allowance_khusus';
+// Sama dengan tabel master_shift di database
+const SHIFT = [
+  { no: 1, label: 'Shift 1 (07.00–15.00)' },
+  { no: 2, label: 'Shift 2 (12.00–20.00)' },
+];
 const JENIS_MANUAL = [
   { v: 'Hadir', l: 'Hadir (input jam masuk / pulang)' },
   { v: 'Izin', l: 'Izin (kepentingan pribadi)' },
@@ -20,6 +28,67 @@ const JENIS_MANUAL = [
 
 // Didefinisikan di luar komponen agar input tidak kehilangan fokus saat re-render
 const ErrText = ({ msg }) => msg ? <p className="text-rose-600 text-xs mt-1">{msg}</p> : null;
+
+// Tanda tangan karyawan (admin bisa buat/ganti pakai mouse). Disimpan langsung, terpisah dari tombol Simpan form.
+function BagianTtd({ idKaryawan, nama }) {
+  const { toast, konfirmasi } = useFeedback();
+  const [ttd, setTtd] = useState(undefined); // undefined = memuat
+  const [diubah, setDiubah] = useState(null);
+  const [buat, setBuat] = useState(false);
+  const [sibuk, setSibuk] = useState(false);
+
+  useEffect(() => {
+    let batal = false;
+    (async () => {
+      const { data, error } = await supabase.rpc('fn_ttd_karyawan', { p_id_karyawan: idKaryawan });
+      if (batal) return;
+      if (error) { toast(pesanError(error), 'gagal'); setTtd(null); return; }
+      setTtd(data?.ttd || null); setDiubah(data?.diubah_at || null);
+    })();
+    return () => { batal = true; };
+  }, [idKaryawan, toast]);
+
+  const simpan = async (gambar) => {
+    setSibuk(true);
+    const { error } = await supabase.rpc('fn_ttd_karyawan_simpan', { p_id_karyawan: idKaryawan, p_ttd: gambar });
+    setSibuk(false);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    setTtd(gambar); setDiubah(gambar ? new Date().toISOString() : null); setBuat(false);
+    toast(gambar ? `Tanda tangan ${nama} tersimpan.` : `Tanda tangan ${nama} dihapus.`);
+  };
+
+  const hapus = async () => {
+    const ok = await konfirmasi({ judul: `Hapus tanda tangan ${nama}?`, pesan: 'Slip allowance yang sudah disetujui tetap memakai tanda tangan lama. Untuk approve berikutnya, karyawan perlu membuat tanda tangan lagi.', tombolYa: 'Hapus', nada: 'bahaya' });
+    if (ok) simpan(null);
+  };
+
+  return (
+    <div className="pt-4 border-t border-slate-100">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-sm font-semibold text-slate-700 inline-flex items-center gap-1.5"><PenLine className="w-4 h-4 text-slate-400" />Tanda tangan</p>
+        {!buat && ttd !== undefined && (
+          <div className="flex gap-1">
+            {ttd && <button type="button" onClick={hapus} disabled={sibuk} className="px-2 py-1 text-xs font-medium text-rose-600 rounded hover:bg-rose-50">Hapus</button>}
+            <button type="button" onClick={() => setBuat(true)} className="px-2 py-1 text-xs font-semibold text-blue-600 rounded hover:bg-blue-50">{ttd ? 'Ganti' : 'Buat'}</button>
+          </div>
+        )}
+      </div>
+      {buat ? (
+        <PadTtd sibuk={sibuk} onSimpan={simpan} onBatal={() => setBuat(false)} />
+      ) : ttd === undefined ? (
+        <p className="text-xs text-slate-400">Memuat...</p>
+      ) : ttd ? (
+        <div className="flex items-end gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={ttd} alt={`Tanda tangan ${nama}`} className="h-16 max-w-[220px] object-contain bg-slate-50 border border-slate-200 rounded-lg p-1" />
+          {diubah && <p className="text-[11px] text-slate-400">Diubah {formatTanggalWaktu(diubah)}</p>}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">Belum ada. Karyawan bisa membuatnya sendiri dari HP saat menyetujui allowance, atau buat di sini pakai mouse.</p>
+      )}
+    </div>
+  );
+}
 
 const Modal = ({ judul, onClose, children, lebar = 'max-w-md' }) => (
   <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -67,7 +136,7 @@ export default function KaryawanPage() {
     (async () => {
       const [{ data: deptData }, { data: jabData }, { data: lokData }, { data: karData, error }] = await Promise.all([
         supabase.from('master_departemen').select('id, nama_departemen'),
-        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan').order('nama'),
+        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama'),
         supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang'),
         supabase.from('karyawan').select(KOLOM_KARYAWAN).order('created_at', { ascending: false }),
       ]);
@@ -166,7 +235,8 @@ export default function KaryawanPage() {
 
   const bukaEdit = (kar) => {
     setEditKar(kar);
-    setForm({ nama_lengkap: kar.nama_lengkap, dept: namaDept(kar), id_atasan: kar.id_atasan || '', jabatan: kar.jabatan || '', id_lokasi: kar.id_lokasi || '' });
+    setForm({ nama_lengkap: kar.nama_lengkap, dept: namaDept(kar), id_atasan: kar.id_atasan || '', jabatan: kar.jabatan || '', id_lokasi: kar.id_lokasi || '',
+      pakaiKhusus: kar.allowance_khusus !== null && kar.allowance_khusus !== undefined, allowance_khusus: kar.allowance_khusus ?? null });
     setErrorsKar({}); setShowModal(true);
   };
 
@@ -216,6 +286,7 @@ export default function KaryawanPage() {
     if (form.dept === 'Marketing' && !form.id_atasan) errs.id_atasan = 'Pilih atasan dari Backoffice.';
     if (form.dept && !form.jabatan) errs.jabatan = 'Pilih job role.';
     if (!form.id_lokasi) errs.id_lokasi = 'Pilih lokasi kerja.';
+    if (form.pakaiKhusus && form.allowance_khusus === null) errs.allowance = 'Isi nominal allowance khusus, atau hilangkan centangnya.';
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
     if (perubahan && !(await konfirmasi({ judul: perubahan.judul, pesan: perubahan.pesan, tombolYa: perubahan.tombolYa }))) return;
 
@@ -226,6 +297,7 @@ export default function KaryawanPage() {
       id_atasan: form.dept === 'Marketing' ? form.id_atasan : null,
       jabatan: form.jabatan,
       id_lokasi: form.id_lokasi,
+      allowance_khusus: form.pakaiKhusus ? form.allowance_khusus : null,
     };
 
     if (editKar) {
@@ -298,6 +370,8 @@ export default function KaryawanPage() {
       kar, tanggal,
       jenis: izin ? izin.jenis : 'Hadir',
       masuk: jamMenitWIB(abs?.waktu_masuk) || '',
+      shift: abs?.shift ? String(abs.shift) : '',
+      pakaiShift: !!jabatanList.find(j => j.nama === kar.jabatan)?.pakai_shift,
       keluar: jamMenitWIB(abs?.waktu_keluar) || '',
       keterangan: izin?.keterangan || abs?.keterangan || '',
       absensiId: abs?.id || null,
@@ -317,6 +391,7 @@ export default function KaryawanPage() {
       if (m.tanggal > hariIni) errs.tanggal = 'Jam hadir hanya bisa diisi untuk hari ini atau sebelumnya.';
       if (!m.masuk && !m.keluar) errs.masuk = 'Isi jam masuk, jam pulang, atau keduanya.';
       if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = 'Jam pulang harus setelah jam masuk.';
+      if (m.pakaiShift && m.masuk && !m.shift) errs.shift = 'Pilih shift supaya status telat dihitung dari jam shift yang benar.';
     } else if (!m.keterangan.trim()) {
       errs.keterangan = `Tulis alasan ${m.jenis.toLowerCase()}, misalnya "demam, ada surat dokter".`;
     }
@@ -339,6 +414,7 @@ export default function KaryawanPage() {
         tanggal: m.tanggal,
         waktu_masuk: m.masuk ? `${m.tanggal}T${m.masuk}:00+07:00` : null,
         waktu_keluar: m.keluar ? `${m.tanggal}T${m.keluar}:00+07:00` : null,
+        shift: m.pakaiShift && m.shift ? Number(m.shift) : null,
         keterangan: m.keterangan.trim() || null,
       }, { onConflict: 'id_karyawan,tanggal' }));
       if (!error && m.izinId) ({ error } = await supabase.from('izin_harian').delete().eq('id', m.izinId));
@@ -541,6 +617,29 @@ export default function KaryawanPage() {
               <ErrText msg={errorsKar.nama_lengkap} />
             </div>
 
+            {(() => {
+              const jab = jabatanList.find(j => j.nama === form.jabatan);
+              return (
+                <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2">
+                  <p className="text-sm font-semibold text-slate-700 inline-flex items-center gap-1.5"><Wallet className="w-4 h-4 text-slate-400" />Allowance</p>
+                  <p className="text-xs text-slate-500">
+                    {jab ? <>Default job role {jab.nama}: <b className="text-slate-700">{jab.allowance ? formatRupiah(jab.allowance) : 'belum diisi'}</b>. Ubah di Master Data → Job Role.</> : 'Pilih job role untuk melihat allowance default.'}
+                  </p>
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input type="checkbox" checked={form.pakaiKhusus} onChange={e => { setForm({ ...form, pakaiKhusus: e.target.checked }); setErrorsKar({ ...errorsKar, allowance: null }); }} />
+                    Pakai allowance khusus untuk karyawan ini
+                  </label>
+                  {form.pakaiKhusus && (
+                    <>
+                      <InputRupiah value={form.allowance_khusus} onChange={v => { setForm({ ...form, allowance_khusus: v }); setErrorsKar({ ...errorsKar, allowance: null }); }} />
+                      <p className="text-[11px] text-slate-500">Nominal ini dipakai menggantikan allowance job role.</p>
+                    </>
+                  )}
+                  <ErrText msg={errorsKar.allowance} />
+                </div>
+              );
+            })()}
+
             <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">NIP (Otomatis)</label>
@@ -551,6 +650,8 @@ export default function KaryawanPage() {
                 <input type="text" value={editKar ? editKar.username : 'sama dengan NIP'} disabled className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
               </div>
             </div>
+
+            {editKar && <BagianTtd idKaryawan={editKar.id} nama={editKar.nama_lengkap} />}
 
             {perubahan && (
               <div className="px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-medium flex items-center gap-2">
@@ -655,7 +756,21 @@ export default function KaryawanPage() {
                     <ErrText msg={errorsManual.keluar} />
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-500">Status dihitung otomatis: masuk lewat 09:00 = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Jam kerja 09:00–17:00, format 24 jam WIB.</p>
+                {manual.pakaiShift && (
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">Shift</label>
+                    <select value={manual.shift} onChange={e => { setManual({ ...manual, shift: e.target.value }); setErrorsManual({ ...errorsManual, shift: null }); }} className={getStyleInput(errorsManual.shift)}>
+                      <option value="">-- Pilih shift --</option>
+                      {SHIFT.map(sh => <option key={sh.no} value={sh.no}>{sh.label}</option>)}
+                    </select>
+                    <ErrText msg={errorsManual.shift} />
+                  </div>
+                )}
+                <p className="text-[11px] text-slate-500">
+                  {manual.pakaiShift
+                    ? 'Status dihitung otomatis: masuk lewat jam mulai shift = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Format 24 jam WIB.'
+                    : 'Status dihitung otomatis: masuk lewat 09:00 = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Jam kerja 09:00–17:00, format 24 jam WIB.'}
+                </p>
                 <div>
                   <label className="text-sm font-semibold text-slate-700">Alasan Input Manual</label>
                   <input type="text" placeholder="Contoh: HP rusak / kamera tidak bisa diakses" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />

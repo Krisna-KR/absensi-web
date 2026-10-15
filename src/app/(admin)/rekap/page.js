@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Printer, Users, Briefcase, Megaphone, MapPin, Crown } from 'lucide-react';
+import { Printer, Users, Briefcase, Megaphone, MapPin, Crown, ChevronDown } from 'lucide-react';
+import RekapAllowance from '@/components/RekapAllowance';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { formatTanggal, tanggalWIB } from '@/utils/waktu';
@@ -66,7 +67,36 @@ function TabelGrup({ judul, sub, aksen, baris }) {
   );
 }
 
+const JENIS = [
+  { v: 'rekap', l: 'Rekap struktur karyawan' },
+  { v: 'allowance', l: 'Allowance' },
+];
+const KUNCI_JENIS = 'rekap_jenis';
+
+// Dropdown pemilih laporan (Rekap / Allowance), menggantikan judul halaman
+function PilihJenis({ value, onChange }) {
+  return (
+    <div className="relative inline-flex items-center print:hidden">
+      <label htmlFor="jenis-rekap" className="sr-only">Jenis laporan</label>
+      <select id="jenis-rekap" value={value} onChange={e => onChange(e.target.value)}
+        className="appearance-none bg-transparent text-2xl font-bold text-slate-900 pr-9 py-0.5 rounded-lg cursor-pointer outline-none hover:bg-slate-50 focus:ring-2 focus:ring-blue-100">
+        {JENIS.map(j => <option key={j.v} value={j.v}>{j.l}</option>)}
+      </select>
+      <ChevronDown className="w-5 h-5 text-slate-400 absolute right-2 pointer-events-none" />
+    </div>
+  );
+}
+
 export default function RekapPage() {
+  const [jenis, setJenis] = useState(() => {
+    try { return localStorage.getItem(KUNCI_JENIS) === 'allowance' ? 'allowance' : 'rekap'; } catch { return 'rekap'; }
+  });
+  const ganti = (v) => { setJenis(v); try { localStorage.setItem(KUNCI_JENIS, v); } catch { /* abaikan */ } };
+  const pilih = <PilihJenis value={jenis} onChange={ganti} />;
+  return jenis === 'allowance' ? <RekapAllowance pilihJenis={pilih} /> : <RekapStruktur pilihJenis={pilih} />;
+}
+
+function RekapStruktur({ pilihJenis }) {
   const [data, setData] = useState({ karyawan: [], departemen: [], lokasi: [], jabatan: [] });
   const [loading, setLoading] = useState(true);
   const [galat, setGalat] = useState('');
@@ -122,7 +152,8 @@ export default function RekapPage() {
     <div className="space-y-4 print:space-y-3">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm print:border-0 print:shadow-none print:p-0">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Laporan Struktur Karyawan</h1>
+          {pilihJenis}
+          <h1 className="hidden print:block text-2xl font-bold text-slate-900">Laporan Struktur Karyawan</h1>
           <p className="hidden print:block text-sm text-slate-500">Per {formatTanggal(tanggalWIB())}{filterLokasi !== 'semua' ? ` · ${data.lokasi.find(l => l.id === filterLokasi)?.nama_cabang}` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">

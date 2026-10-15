@@ -13,6 +13,9 @@ export function pesanError(error) {
   const masihAda = pesan.match(/Masih ada (\d+) Marketing di bawah job role ini/);
   if (masihAda) return `${masihAda[1]} Marketing masih di bawah job role ini. Pindahkan dulu ke atasan lain.`;
   if (pesan === 'SESI_HABIS') return 'Sesi login berakhir. Muat ulang halaman lalu login lagi.';
+  if (pesan === 'TOTAL_MINUS' || pesan.includes('ck_allowance_total')) return 'Potongan lebih besar dari allowance ditambah komisi. Kurangi potongannya.';
+  if (pesan === 'NOMINAL_MINUS') return 'Potongan dan komisi tidak boleh minus.';
+  if (pesan === 'TTD_TIDAK_VALID') return 'Gambar tanda tangan tidak bisa disimpan. Coba coret ulang.';
   if (pesan.includes('Jabatan Backoffice harus')) return 'Pilih jabatan Backoffice: Business Manager, IT, atau Admin.';
   const bawahan = pesan.match(/Masih membawahi (\d+) Marketing/);
   if (bawahan) return `Karyawan ini masih membawahi ${bawahan[1]} Marketing. Pindahkan dulu bawahannya ke Business Manager lain lewat tombol Pindahkan bawahan.`;
