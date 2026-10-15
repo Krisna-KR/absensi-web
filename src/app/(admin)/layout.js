@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from "react";
-import { Calendar, Home, LogOut, Users, FileText, Database, MonitorSmartphone, Loader2 } from "lucide-react";
+import { Calendar, Home, LogOut, Users, Database, MonitorSmartphone, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import Notifikasi from "@/components/Notifikasi";
+import MenuRekap from "@/components/MenuRekap";
 import { supabase } from "@/utils/supabase/client";
 import { ambilToken, hapusToken } from "@/utils/sesi";
 
@@ -46,8 +47,8 @@ export default function AdminLayout({ children }) {
   const getNavClass = (path) => {
     const isActive = pathname === path;
     return isActive
-      ? "flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg border border-blue-100 font-semibold shrink-0"
-      : "flex items-center gap-2 hover:text-slate-900 transition-colors text-slate-500 font-medium px-3 py-2 shrink-0";
+      ? "flex items-center gap-2 bg-blue-50 text-blue-700 px-2.5 2xl:px-3 py-2 rounded-lg border border-blue-100 font-semibold shrink-0"
+      : "flex items-center gap-2 hover:text-slate-900 transition-colors text-slate-500 font-medium px-2.5 2xl:px-3 py-2 shrink-0";
   };
   const inisial = admin.username.slice(0, 2).toUpperCase();
 
@@ -71,28 +72,28 @@ export default function AdminLayout({ children }) {
             </div>
         </div>
 
-        <div className="flex items-center gap-1 text-sm w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-hide whitespace-nowrap">
+        <div className="flex items-center gap-0.5 2xl:gap-1 text-sm w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-hide whitespace-nowrap">
             <Link href="/" className={getNavClass("/")}><Home className="w-4 h-4 shrink-0" /> Dashboard</Link>
             <Link href="/kehadiran" className={getNavClass("/kehadiran")}><Calendar className="w-4 h-4 shrink-0" /> Kehadiran</Link>
             <Link href="/karyawan" className={getNavClass("/karyawan")}><Users className="w-4 h-4 shrink-0" /> Karyawan</Link>
-            <Link href="/rekap" className={getNavClass("/rekap")}><FileText className="w-4 h-4 shrink-0" /> Rekap</Link>
+            <MenuRekap />
             <Link href="/master" className={getNavClass("/master")}><Database className="w-4 h-4 shrink-0" /> Master Data</Link>
-            <Link href="/qr-kiosk" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-white bg-slate-900 hover:bg-slate-800 transition px-4 py-2 rounded-lg font-semibold shrink-0">
+            <Link href="/qr-kiosk" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-white bg-slate-900 hover:bg-slate-800 transition px-3 2xl:px-4 py-2 rounded-lg font-semibold shrink-0">
                 <MonitorSmartphone className="w-4 h-4" /> Layar Presensi
             </Link>
         </div>
 
-        <div className="hidden lg:flex items-center justify-end gap-4 w-auto shrink-0">
+        <div className="hidden lg:flex items-center justify-end gap-3 2xl:gap-4 w-auto shrink-0">
             <Notifikasi />
-            <div className="flex items-center gap-3 border-l border-slate-200 pl-5">
+            <div className="flex items-center gap-3 border-l border-slate-200 pl-3 2xl:pl-5" title={`${admin.username} (${admin.role})`}>
                 <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">{inisial}</div>
-                <div className="flex flex-col">
+                <div className="hidden 2xl:flex flex-col">
                     <span className="text-slate-900 text-sm font-semibold">{admin.username}</span>
                     <span className="text-slate-500 text-xs capitalize">{admin.role}</span>
                 </div>
             </div>
-            <button onClick={logout} disabled={keluar} className="flex items-center gap-2 text-slate-500 hover:text-rose-600 transition-colors ml-2 text-sm font-medium disabled:opacity-50">
-                {keluar ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />} Keluar
+            <button onClick={logout} disabled={keluar} aria-label="Keluar" title="Keluar" className="flex items-center gap-2 text-slate-500 hover:text-rose-600 transition-colors ml-1 2xl:ml-2 text-sm font-medium disabled:opacity-50">
+                {keluar ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}<span className="hidden 2xl:inline">Keluar</span>
             </button>
         </div>
       </nav>

@@ -76,7 +76,7 @@ function Slip({ r, periodeLabel }) {
   );
 }
 
-export default function RekapAllowance({ pilihJenis }) {
+export default function RekapAllowance() {
   const { toast, konfirmasi } = useFeedback();
   const sekarang = tanggalWIB();
   const [tahun, setTahun] = useState(Number(sekarang.slice(0, 4)));
@@ -232,7 +232,7 @@ export default function RekapAllowance({ pilihJenis }) {
       {/* ===== Header & filter ===== */}
       <div className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 ${slip ? 'print:hidden' : ''}`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
-          <div>{pilihJenis}<p className="text-sm text-slate-500 mt-1">Allowance {periodeLabel} · {rows.length} karyawan</p></div>
+          <div><h1 className="text-2xl font-bold text-slate-900">Allowance</h1><p className="text-sm text-slate-500 mt-1">Allowance {periodeLabel} · {rows.length} karyawan</p></div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-slate-500">Bulan
               <select value={bulan} onChange={e => gantiPeriode(() => setBulan(Number(e.target.value)))} className={`${kelasSelect} block mt-1`}>
