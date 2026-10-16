@@ -5,10 +5,10 @@ export function pesanError(error) {
   const kode = error.code;
 
   // Pesan dari trigger validasi struktur (RAISE EXCEPTION)
-  if (pesan.includes('Marketing wajib memiliki 1 atasan')) return 'Pilih atasan untuk karyawan Marketing ini, atau centang Marketing leader.';
-  if (pesan.includes('Atasan Marketing harus')) return 'Atasan Marketing harus Business Manager (Backoffice) atau Marketing leader yang aktif. Pilih atasan lain.';
+  if (pesan.includes('Marketing wajib memiliki 1 atasan')) return 'Pilih atasan (Business Manager) untuk karyawan Marketing ini.';
+  if (pesan.includes('Atasan Marketing harus')) return 'Atasan Marketing harus karyawan aktif dengan job role yang bisa jadi atasan (Business Manager). Pilih atasan lain.';
   if (pesan.includes('bukan milik departemen')) return 'Job role yang dipilih bukan milik departemen ini. Pilih job role lain.';
-  if (pesan.includes('Hanya job role Backoffice yang bisa jadi atasan')) return 'Hanya job role Backoffice yang boleh ditandai bisa jadi atasan.';
+  if (pesan.includes('hanya bisa didaftarkan oleh admin')) return 'Job role ini hanya bisa didaftarkan oleh admin.';
   if (pesan.includes('Departemen job role yang sudah dipakai')) return 'Job role ini sudah dipakai karyawan, jadi departemennya tidak bisa diganti.';
   const masihAda = pesan.match(/Masih ada (\d+) Marketing di bawah job role ini/);
   if (masihAda) return `${masihAda[1]} Marketing masih di bawah job role ini. Pindahkan dulu ke atasan lain.`;

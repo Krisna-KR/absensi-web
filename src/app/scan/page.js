@@ -172,11 +172,13 @@ export default function MobileScannerPage() {
   const isMT = regType === 'MT';
   const deptDaftar = isMT ? 'Marketing' : 'Backoffice';
   const jabatanDaftar = opsi.jabatan.filter(j => j.departemen === deptDaftar);
+  // Lokasi default: Surabaya (kalau ada), atau satu-satunya lokasi
+  const lokasiDefault = (opsi.lokasi.find(l => l.nama?.trim().toLowerCase() === 'surabaya') || (opsi.lokasi.length === 1 ? opsi.lokasi[0] : null))?.id || '';
 
   const handleRegister = async (e) => {
     e.preventDefault(); setLoading(true); setMessage('');
     const jabatan = regForm.jabatan || (jabatanDaftar.length === 1 ? jabatanDaftar[0].nama : '');
-    const idLokasi = regForm.id_lokasi || (opsi.lokasi.length === 1 ? opsi.lokasi[0].id : '');
+    const idLokasi = regForm.id_lokasi || lokasiDefault;
     if (!regForm.nama_lengkap.trim() || !jabatan || !idLokasi || (isMT && !regForm.id_atasan)) {
       setMessage(isMT ? 'Isi nama lengkap, lalu pilih atasan dan lokasi kerja.' : 'Isi nama lengkap, lalu pilih jabatan dan lokasi kerja.');
       setLoading(false); return;
@@ -316,7 +318,7 @@ export default function MobileScannerPage() {
             
             <div className="flex bg-slate-100 p-1 rounded-xl mb-6 shadow-inner">
                <button onClick={() => { setRegType('MT'); setRegForm({ ...regForm, jabatan: '' }); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'MT' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar MT</button>
-               <button onClick={() => { setRegType('BO'); setRegForm({ ...regForm, jabatan: '' }); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'BO' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar BO / Manager</button>
+               <button onClick={() => { setRegType('BO'); setRegForm({ ...regForm, jabatan: '' }); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-colors ${regType === 'BO' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>Daftar BO</button>
             </div>
 
             <div className="bg-blue-50 border border-blue-100 p-3 rounded-lg text-xs text-blue-700 mb-6 text-center">
@@ -349,7 +351,7 @@ export default function MobileScannerPage() {
               {opsi.lokasi.length > 1 && (
                 <div>
                    <label className="text-sm font-bold text-slate-700 mb-1 block">Lokasi kerja</label>
-                   <select required value={regForm.id_lokasi} onChange={e => setRegForm({...regForm, id_lokasi: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+                   <select required value={regForm.id_lokasi || lokasiDefault} onChange={e => setRegForm({...regForm, id_lokasi: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
                       <option value="">Pilih lokasi</option>
                       {opsi.lokasi.map(l => <option key={l.id} value={l.id}>{l.nama}</option>)}
                    </select>

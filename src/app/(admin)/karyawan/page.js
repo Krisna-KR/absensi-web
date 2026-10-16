@@ -11,9 +11,9 @@ import InputRupiah from '@/components/InputRupiah';
 import PadTtd from '@/components/PadTtd';
 import { formatRupiah } from '@/utils/rupiah';
 
-const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', marketing_leader: false, pakaiKhusus: false, allowance_khusus: null };
+const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', pakaiKhusus: false, allowance_khusus: null };
 // Kolom password tidak bisa dibaca lewat API, jadi kolom disebut satu per satu
-const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at, allowance_khusus, marketing_leader';
+const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at, allowance_khusus';
 // Sama dengan tabel master_shift di database
 const SHIFT = [
   { no: 1, label: 'Shift 1 (07.00–15.00)' },
@@ -186,10 +186,12 @@ export default function KaryawanPage() {
     });
   }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif]);
 
-  // Yang boleh membawahi Marketing: Backoffice dengan job role "bisa jadi atasan", atau Marketing leader
-  const bisaMembawahi = (k) => (namaDept(k) === 'Backoffice' && jabatanAtasan.has(k.jabatan)) || (namaDept(k) === 'Marketing' && k.marketing_leader);
+  // Yang boleh membawahi Marketing: job role tercentang "bisa jadi atasan" (Business Manager, Branch Manager, Vice President)
+  const bisaMembawahi = (k) => jabatanAtasan.has(k.jabatan);
   const daftarBM = karyawan.filter(k => bisaMembawahi(k) && k.is_approved && k.is_aktif);
-  const labelAtasan = (b) => `${b.nama_lengkap} · ${namaDept(b) === 'Marketing' ? 'Marketing leader' : b.jabatan}`;
+  const labelAtasan = (b) => `${b.nama_lengkap} · ${b.jabatan}`;
+  // Marketing dengan job role "bisa jadi atasan" (Business Manager) = kepala tim, tidak punya atasan
+  const formKepalaTim = form.dept === 'Marketing' && jabatanAtasan.has(form.jabatan);
 
   // =================== AKSI CEPAT ===================
   const aksiApprove = async (kar) => {
@@ -249,12 +251,11 @@ export default function KaryawanPage() {
   };
 
   // =================== TAMBAH / EDIT KARYAWAN ===================
-  const bukaTambah = () => { setEditKar(null); setForm({ ...FORM_KOSONG, id_lokasi: lokasiList[0]?.id || '' }); setErrorsKar({}); setShowModal(true); };
+  const bukaTambah = () => { setEditKar(null); setForm({ ...FORM_KOSONG, id_lokasi: (lokasiList.find(l => l.nama_cabang?.trim().toLowerCase() === 'surabaya') || lokasiList[0])?.id || '' }); setErrorsKar({}); setShowModal(true); };
 
   const bukaEdit = (kar) => {
     setEditKar(kar);
     setForm({ nama_lengkap: kar.nama_lengkap, dept: namaDept(kar), id_atasan: kar.id_atasan || '', jabatan: kar.jabatan || '', id_lokasi: kar.id_lokasi || '',
-      marketing_leader: !!kar.marketing_leader,
       pakaiKhusus: kar.allowance_khusus !== null && kar.allowance_khusus !== undefined, allowance_khusus: kar.allowance_khusus ?? null });
     setErrorsKar({}); setShowModal(true);
   };
@@ -278,19 +279,19 @@ export default function KaryawanPage() {
       pesan: `Riwayat struktur mencatat perpindahan ${nama} dari ${deptLama} ke ${form.dept}.`,
       tombolYa: 'Pindahkan',
     };
-    if (form.dept === 'Marketing' && !editKar.marketing_leader && form.marketing_leader) return {
-      icon: TrendingUp, teks: `Jadi Marketing leader. ${editKar.id_atasan ? `Keluar dari tim ${atasanLama}, ` : ''}tidak punya atasan dan bisa membawahi Marketing.`,
-      judul: `Jadikan ${nama} Marketing leader?`,
-      pesan: `${nama} tidak lagi punya atasan${editKar.id_atasan ? ` (keluar dari tim ${atasanLama})` : ''} dan bisa dipilih sebagai atasan karyawan Marketing lain. Riwayat struktur mencatat perubahan ini.`,
-      tombolYa: 'Jadikan leader',
+    if (formKepalaTim && !jabatanAtasan.has(editKar.jabatan)) return {
+      icon: TrendingUp, teks: `Promosi jadi ${form.jabatan}. ${editKar.id_atasan ? `Keluar dari tim ${atasanLama}, ` : ''}tidak punya atasan dan bisa membawahi Marketing.`,
+      judul: `Promosikan ${nama} jadi ${form.jabatan}?`,
+      pesan: `${nama} tidak lagi punya atasan${editKar.id_atasan ? ` (keluar dari tim ${atasanLama})` : ''} dan bisa dipilih sebagai atasan karyawan Marketing lain. Riwayat struktur mencatat promosi ini.`,
+      tombolYa: 'Promosikan',
     };
-    if (form.dept === 'Marketing' && editKar.marketing_leader && !form.marketing_leader && form.id_atasan) return {
-      icon: ArrowRightLeft, teks: `Bukan leader lagi, masuk tim ${atasanBaru}.`,
-      judul: `Cabut status leader ${nama}?`,
-      pesan: `${nama} masuk tim ${atasanBaru}. Kalau masih punya bawahan, pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`,
+    if (form.dept === 'Marketing' && !formKepalaTim && jabatanAtasan.has(editKar.jabatan) && form.id_atasan) return {
+      icon: ArrowRightLeft, teks: `Jadi ${form.jabatan}, masuk tim ${atasanBaru}.`,
+      judul: `Ubah ${nama} jadi ${form.jabatan}?`,
+      pesan: `${nama} tidak lagi membawahi Marketing dan masuk tim ${atasanBaru}. Kalau masih punya bawahan, pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`,
       tombolYa: 'Simpan',
     };
-    if (form.dept === 'Marketing' && !form.marketing_leader && (editKar.id_atasan || '') !== form.id_atasan && form.id_atasan) return {
+    if (form.dept === 'Marketing' && !formKepalaTim && (editKar.id_atasan || '') !== form.id_atasan && form.id_atasan) return {
       icon: ArrowRightLeft, teks: `Atasan berubah: ${atasanLama} → ${atasanBaru}.`,
       judul: `Pindahkan ${nama} ke tim ${atasanBaru}?`,
       pesan: editKar.id_atasan
@@ -314,9 +315,9 @@ export default function KaryawanPage() {
     const errs = {};
     if (!form.nama_lengkap.trim()) errs.nama_lengkap = 'Isi nama lengkap.';
     if (!form.dept) errs.dept = 'Pilih Marketing atau Backoffice.';
-    if (form.dept === 'Marketing' && !form.marketing_leader && !form.id_atasan) errs.id_atasan = 'Pilih atasan, atau centang Marketing leader.';
-    if (editKar?.marketing_leader && !form.marketing_leader && bawahanOf(editKar.id).length > 0)
-      errs.marketing_leader = `Masih membawahi ${bawahanOf(editKar.id).length} Marketing. Pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`;
+    if (form.dept === 'Marketing' && form.jabatan && !formKepalaTim && !form.id_atasan) errs.id_atasan = 'Pilih atasan (Business Manager).';
+    if (editKar && bawahanOf(editKar.id).length > 0 && !jabatanAtasan.has(form.jabatan))
+      errs.jabatan = `Masih membawahi ${bawahanOf(editKar.id).length} Marketing. Pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`;
     if (form.dept && !form.jabatan) errs.jabatan = 'Pilih job role.';
     if (!form.id_lokasi) errs.id_lokasi = 'Pilih lokasi kerja.';
     if (form.pakaiKhusus && form.allowance_khusus === null) errs.allowance = 'Isi nominal allowance khusus, atau hilangkan centangnya.';
@@ -327,8 +328,7 @@ export default function KaryawanPage() {
     const payload = {
       nama_lengkap: form.nama_lengkap.trim(),
       id_departemen: deptIdByName[form.dept],
-      id_atasan: form.dept === 'Marketing' && !form.marketing_leader ? form.id_atasan : null,
-      marketing_leader: form.dept === 'Marketing' && form.marketing_leader,
+      id_atasan: form.dept === 'Marketing' && !formKepalaTim ? form.id_atasan : null,
       jabatan: form.jabatan,
       id_lokasi: form.id_lokasi,
       allowance_khusus: form.pakaiKhusus ? form.allowance_khusus : null,
@@ -539,10 +539,7 @@ export default function KaryawanPage() {
                       <span className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded border tracking-wide ${dept === 'Marketing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : dept === 'Backoffice' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                         {dept || 'Tanpa Departemen'}{kar.jabatan && kar.jabatan !== dept ? ` · ${kar.jabatan}` : ''}
                       </span>
-                      {dept === 'Marketing' && kar.marketing_leader && (
-                        <p className="text-xs mt-1.5 font-semibold text-emerald-700">Marketing leader</p>
-                      )}
-                      {dept === 'Marketing' && !kar.marketing_leader && (
+                      {dept === 'Marketing' && !bisaMembawahi(kar) && (
                         <p className={`text-xs mt-1.5 ${atasan ? 'text-slate-500' : 'text-rose-600 font-semibold'}`}>
                           {atasan ? `Atasan: ${atasan.nama_lengkap}` : 'Belum punya atasan. Klik edit untuk memilih.'}
                         </p>
@@ -630,25 +627,20 @@ export default function KaryawanPage() {
               </div>
             )}
 
-            {form.dept === 'Marketing' && (
-              <div>
-                <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 text-sm cursor-pointer hover:bg-slate-50">
-                  <input type="checkbox" className="mt-0.5" checked={form.marketing_leader}
-                    onChange={e => { setForm({ ...form, marketing_leader: e.target.checked }); setErrorsKar({ ...errorsKar, id_atasan: null, marketing_leader: null }); }} />
-                  <span><b className="font-semibold text-slate-800">Marketing leader</b><br /><span className="text-slate-500">Tidak punya atasan dan bisa membawahi karyawan Marketing lain.</span></span>
-                </label>
-                <ErrText msg={errorsKar.marketing_leader} />
-              </div>
+            {formKepalaTim && (
+              <p className="px-3 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm">
+                <b className="font-semibold">{form.jabatan}</b> adalah kepala tim: tidak punya atasan dan bisa membawahi karyawan Marketing lain.
+              </p>
             )}
 
-            {form.dept === 'Marketing' && !form.marketing_leader && (
+            {form.dept === 'Marketing' && !formKepalaTim && (
               <div>
                 <label className="text-sm font-semibold text-slate-700">Atasan <span className="text-rose-500">*</span></label>
                 <select value={form.id_atasan} onChange={e => { setForm({ ...form, id_atasan: e.target.value }); setErrorsKar({ ...errorsKar, id_atasan: null }); }} className={getStyleInput(errorsKar.id_atasan)}>
                   <option value="">-- Pilih Atasan --</option>
                   {daftarBM.filter(b => b.id !== editKar?.id).map(b => <option key={b.id} value={b.id}>{labelAtasan(b)}</option>)}
                 </select>
-                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada atasan. Tambahkan dulu Business Manager (Backoffice) atau Marketing leader.</p>}
+                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada atasan. Tambahkan dulu karyawan dengan job role Business Manager.</p>}
                 <ErrText msg={errorsKar.id_atasan} />
               </div>
             )}

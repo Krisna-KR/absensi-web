@@ -88,7 +88,7 @@ function olahData(rows, periode) {
   // Ketepatan waktu per tim
   const tim = new Map();
   kerja.forEach(r => {
-    // Marketing tanpa atasan = Marketing leader (aturan database), timnya memakai namanya sendiri
+    // Marketing tanpa atasan = Business Manager (kepala tim), timnya memakai namanya sendiri
     const nama = r.nama_departemen === 'Marketing' ? `Tim ${r.nama_atasan || r.nama_lengkap}` : 'Backoffice';
     const t = tim.get(nama) || { total: 0, tepat: 0 };
     t.total++; if (r.status === 'Hadir') t.tepat++;

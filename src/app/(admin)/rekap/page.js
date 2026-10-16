@@ -76,7 +76,7 @@ export default function RekapPage() {
     let batal = false;
     (async () => {
       const [k, d, l, j] = await Promise.all([
-        supabase.from('karyawan').select('id, nip, nama_lengkap, jabatan, id_departemen, id_atasan, id_lokasi, marketing_leader').eq('is_aktif', true).eq('is_approved', true).order('nama_lengkap'),
+        supabase.from('karyawan').select('id, nip, nama_lengkap, jabatan, id_departemen, id_atasan, id_lokasi').eq('is_aktif', true).eq('is_approved', true).order('nama_lengkap'),
         supabase.from('master_departemen').select('id, nama_departemen'),
         supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang'),
         supabase.from('master_jabatan').select('nama, bisa_jadi_atasan'),
@@ -105,16 +105,16 @@ export default function RekapPage() {
 
     const backoffice = tampil.filter(k => k.divisi === 'Backoffice');
     const marketing = tampil.filter(k => k.divisi === 'Marketing');
-    // Kepala tim: Backoffice dengan job role bisa jadi atasan, atau Marketing leader
-    const leader = semua.filter(k => (k.divisi === 'Backoffice' && atasanRole.has(k.jabatan)) || (k.divisi === 'Marketing' && k.marketing_leader));
+    // Kepala tim: job role "bisa jadi atasan" (Business Manager di Marketing; Branch Manager / VP di Backoffice)
+    const leader = semua.filter(k => atasanRole.has(k.jabatan));
     const tim = leader.map(l => ({
       leader: l,
       anggota: [
         ...(tampil.some(k => k.id === l.id) ? [{ ...l, atasanTim: true, teamLeader: '' }] : []),
         ...marketing.filter(m => m.id_atasan === l.id && m.id !== l.id),
       ],
-    })).filter(t => t.anggota.length > 0 && (t.leader.marketing_leader || t.anggota.some(a => !a.atasanTim)));
-    const tanpaAtasan = marketing.filter(m => !m.marketing_leader && !leader.some(l => l.id === m.id_atasan));
+    })).filter(t => t.anggota.length > 0 && (t.leader.divisi === 'Marketing' || t.anggota.some(a => !a.atasanTim)));
+    const tanpaAtasan = marketing.filter(m => !atasanRole.has(m.jabatan) && !leader.some(l => l.id === m.id_atasan));
 
     return { semua, tampil, backoffice, marketing, tim, tanpaAtasan };
   }, [data, filterLokasi]);
@@ -154,13 +154,13 @@ export default function RekapPage() {
           </div>
 
           {laporan.backoffice.length > 0 && (
-            <TabelGrup judul="Backoffice" sub="Business Manager, IT, Admin, dan job role Backoffice lain" aksen="#2a78d6"
+            <TabelGrup judul="Backoffice" sub="IT, Admin, dan job role Backoffice lain" aksen="#2a78d6"
               baris={laporan.backoffice.map(k => ({ ...k, teamLeader: '' }))} />
           )}
 
           {laporan.tim.map(t => (
             <TabelGrup key={t.leader.id} judul={`Tim ${t.leader.nama_lengkap}`} aksen="#1baf7a"
-              sub={`Team leader: ${t.leader.nama_lengkap} (${t.leader.marketing_leader ? 'Marketing leader' : t.leader.jabatan}, ${t.leader.lokasi})`} baris={t.anggota} />
+              sub={`Team leader: ${t.leader.nama_lengkap} (${t.leader.jabatan}, ${t.leader.lokasi})`} baris={t.anggota} />
           ))}
 
           {laporan.tanpaAtasan.length > 0 && (

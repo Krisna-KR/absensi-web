@@ -14,7 +14,7 @@ const TAB = [
 ];
 
 const ATURAN_DEPT = {
-  Marketing: 'Wajib punya 1 atasan dari Backoffice. Tidak bisa jadi atasan.',
+  Marketing: 'Wajib punya 1 atasan, kecuali job role yang ditandai "bisa jadi atasan" (Business Manager): tidak punya atasan dan jadi kepala tim.',
   Backoffice: 'Tidak punya atasan. Job role yang ditandai "bisa jadi atasan" boleh membawahi Marketing.',
 };
 
@@ -84,7 +84,6 @@ export default function MasterDataPage() {
   };
 
   // ---------- Job role ----------
-  const deptBackoffice = departemen.find(d => d.nama_departemen === 'Backoffice')?.id;
 
   const simpanJabatan = async (e) => {
     e.preventDefault();
@@ -92,7 +91,7 @@ export default function MasterDataPage() {
     if (!nama || !formJabatan.id_departemen) return;
     setSimpan(true);
     const payload = {
-      nama, bisa_jadi_atasan: formJabatan.id_departemen === deptBackoffice && formJabatan.bisa_jadi_atasan,
+      nama, bisa_jadi_atasan: !!formJabatan.id_departemen && formJabatan.bisa_jadi_atasan,
       allowance: formJabatan.allowance || 0, pakai_shift: formJabatan.pakai_shift,
     };
     const { error } = formJabatan.lama
@@ -215,16 +214,16 @@ export default function MasterDataPage() {
             <div>
               <label className="text-sm font-medium text-slate-700">Departemen</label>
               <select value={formJabatan.id_departemen} disabled={!!formJabatan.lama}
-                onChange={e => setFormJabatan({ ...formJabatan, id_departemen: e.target.value, bisa_jadi_atasan: e.target.value === deptBackoffice && formJabatan.bisa_jadi_atasan })}
+                onChange={e => setFormJabatan({ ...formJabatan, id_departemen: e.target.value })}
                 className={`${kelasInput} mt-1 disabled:bg-slate-50 disabled:text-slate-500`}>
                 <option value="">-- Pilih departemen --</option>
                 {departemen.map(d => <option key={d.id} value={d.id}>{d.nama_departemen}</option>)}
               </select>
             </div>
-            <label className={`flex items-start gap-2.5 p-3 rounded-lg border text-sm ${formJabatan.id_departemen === deptBackoffice ? 'border-slate-200 cursor-pointer' : 'border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed'}`}>
-              <input type="checkbox" className="mt-0.5" disabled={formJabatan.id_departemen !== deptBackoffice} checked={formJabatan.bisa_jadi_atasan}
+            <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-0.5" checked={formJabatan.bisa_jadi_atasan}
                 onChange={e => setFormJabatan({ ...formJabatan, bisa_jadi_atasan: e.target.checked })} />
-              <span><b className="font-semibold">Bisa jadi atasan</b><br />Hanya untuk job role Backoffice. Karyawan dengan job role ini bisa membawahi Marketing.</span>
+              <span><b className="font-semibold">Bisa jadi atasan</b><br />Karyawan dengan job role ini bisa membawahi Marketing, tidak kena aturan komisi, dan tidak bisa daftar sendiri lewat HP. Di Marketing, job role ini jadi kepala tim tanpa atasan.</span>
             </label>
             <div>
               <label className="text-sm font-medium text-slate-700">Allowance per bulan</label>
