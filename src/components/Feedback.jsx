@@ -60,7 +60,7 @@ export function FeedbackProvider({ children }) {
       {dialog && (
         <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4" onClick={() => tutupDialog(false)}>
           <div role="alertdialog" aria-modal="true" aria-labelledby="dialog-judul" onClick={e => e.stopPropagation()}
-            className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-6">
+            className="w-full sm:max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 p-5 sm:p-6">
             <div className="flex gap-4">
               <div className={`w-10 h-10 rounded-full shrink-0 flex items-center justify-center ${warnaIcon}`}><IconDialog className="w-5 h-5" /></div>
               <div className="min-w-0">
@@ -68,7 +68,7 @@ export function FeedbackProvider({ children }) {
                 {dialog.pesan && <div className="text-sm text-slate-600 mt-1.5 leading-relaxed">{dialog.pesan}</div>}
               </div>
             </div>
-            <div className="flex justify-end gap-2 mt-6">
+            <div className="flex justify-end gap-2 mt-6 [&>button]:flex-1 sm:[&>button]:flex-none [&>button]:py-2.5">
               {!dialog.tanpaBatal && (
                 <button onClick={() => tutupDialog(false)} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200">{dialog.tombolTidak || 'Batal'}</button>
               )}

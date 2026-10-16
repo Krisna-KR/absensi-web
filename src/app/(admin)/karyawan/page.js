@@ -11,9 +11,9 @@ import InputRupiah from '@/components/InputRupiah';
 import PadTtd from '@/components/PadTtd';
 import { formatRupiah } from '@/utils/rupiah';
 
-const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', pakaiKhusus: false, allowance_khusus: null };
+const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', marketing_leader: false, pakaiKhusus: false, allowance_khusus: null };
 // Kolom password tidak bisa dibaca lewat API, jadi kolom disebut satu per satu
-const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at, allowance_khusus';
+const KOLOM_KARYAWAN = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, nonaktif_at, created_at, allowance_khusus, marketing_leader';
 // Sama dengan tabel master_shift di database
 const SHIFT = [
   { no: 1, label: 'Shift 1 (07.00–15.00)' },
@@ -90,16 +90,31 @@ function BagianTtd({ idKaryawan, nama }) {
   );
 }
 
-const Modal = ({ judul, onClose, children, lebar = 'max-w-md' }) => (
-  <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-    <div className={`bg-white rounded-2xl shadow-xl w-full ${lebar} overflow-hidden border border-slate-200 max-h-[90vh] flex flex-col`}>
-      <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-        <h2 className="text-lg font-bold text-slate-900">{judul}</h2>
-        <button onClick={onClose} className="text-slate-400 hover:text-rose-500"><X className="w-5 h-5" /></button>
+// Popup: di HP muncul dari bawah selebar layar (bottom sheet), di laptop di tengah layar.
+// Lebar desktop diatur lewat prop `lebar` (kelas sm:max-w-*).
+function Modal({ judul, onClose, children, lebar = 'sm:max-w-lg' }) {
+  useEffect(() => {
+    const awal = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';   // halaman di belakang tidak ikut ter-scroll
+    return () => { document.body.style.overflow = awal; };
+  }, []);
+  return (
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-6">
+      <div role="dialog" aria-modal="true" aria-label={judul}
+        className={`bg-white w-full ${lebar} flex flex-col overflow-hidden border border-slate-200 shadow-xl rounded-t-2xl sm:rounded-2xl max-h-[94dvh] sm:max-h-[90vh]`}>
+        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-white shrink-0">
+          <h2 className="text-lg font-bold text-slate-900 min-w-0 truncate">{judul}</h2>
+          <button type="button" onClick={onClose} aria-label="Tutup" className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-50"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="overflow-y-auto overscroll-contain">{children}</div>
       </div>
-      <div className="overflow-y-auto">{children}</div>
     </div>
-  </div>
+  );
+}
+
+// Baris tombol di bawah popup: selalu terlihat walau isi form panjang
+const FooterModal = ({ children, className = 'justify-end' }) => (
+  <div className={`sticky bottom-0 z-10 -mx-5 sm:-mx-6 -mb-5 sm:-mb-6 mt-2 px-5 sm:px-6 py-4 bg-white border-t border-slate-100 flex flex-wrap items-center gap-3 ${className}`}>{children}</div>
 );
 
 export default function KaryawanPage() {
@@ -171,7 +186,10 @@ export default function KaryawanPage() {
     });
   }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif]);
 
-  const daftarBM = karyawan.filter(k => namaDept(k) === 'Backoffice' && jabatanAtasan.has(k.jabatan) && k.is_approved && k.is_aktif);
+  // Yang boleh membawahi Marketing: Backoffice dengan job role "bisa jadi atasan", atau Marketing leader
+  const bisaMembawahi = (k) => (namaDept(k) === 'Backoffice' && jabatanAtasan.has(k.jabatan)) || (namaDept(k) === 'Marketing' && k.marketing_leader);
+  const daftarBM = karyawan.filter(k => bisaMembawahi(k) && k.is_approved && k.is_aktif);
+  const labelAtasan = (b) => `${b.nama_lengkap} · ${namaDept(b) === 'Marketing' ? 'Marketing leader' : b.jabatan}`;
 
   // =================== AKSI CEPAT ===================
   const aksiApprove = async (kar) => {
@@ -236,6 +254,7 @@ export default function KaryawanPage() {
   const bukaEdit = (kar) => {
     setEditKar(kar);
     setForm({ nama_lengkap: kar.nama_lengkap, dept: namaDept(kar), id_atasan: kar.id_atasan || '', jabatan: kar.jabatan || '', id_lokasi: kar.id_lokasi || '',
+      marketing_leader: !!kar.marketing_leader,
       pakaiKhusus: kar.allowance_khusus !== null && kar.allowance_khusus !== undefined, allowance_khusus: kar.allowance_khusus ?? null });
     setErrorsKar({}); setShowModal(true);
   };
@@ -259,7 +278,19 @@ export default function KaryawanPage() {
       pesan: `Riwayat struktur mencatat perpindahan ${nama} dari ${deptLama} ke ${form.dept}.`,
       tombolYa: 'Pindahkan',
     };
-    if (form.dept === 'Marketing' && (editKar.id_atasan || '') !== form.id_atasan && form.id_atasan) return {
+    if (form.dept === 'Marketing' && !editKar.marketing_leader && form.marketing_leader) return {
+      icon: TrendingUp, teks: `Jadi Marketing leader. ${editKar.id_atasan ? `Keluar dari tim ${atasanLama}, ` : ''}tidak punya atasan dan bisa membawahi Marketing.`,
+      judul: `Jadikan ${nama} Marketing leader?`,
+      pesan: `${nama} tidak lagi punya atasan${editKar.id_atasan ? ` (keluar dari tim ${atasanLama})` : ''} dan bisa dipilih sebagai atasan karyawan Marketing lain. Riwayat struktur mencatat perubahan ini.`,
+      tombolYa: 'Jadikan leader',
+    };
+    if (form.dept === 'Marketing' && editKar.marketing_leader && !form.marketing_leader && form.id_atasan) return {
+      icon: ArrowRightLeft, teks: `Bukan leader lagi, masuk tim ${atasanBaru}.`,
+      judul: `Cabut status leader ${nama}?`,
+      pesan: `${nama} masuk tim ${atasanBaru}. Kalau masih punya bawahan, pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`,
+      tombolYa: 'Simpan',
+    };
+    if (form.dept === 'Marketing' && !form.marketing_leader && (editKar.id_atasan || '') !== form.id_atasan && form.id_atasan) return {
       icon: ArrowRightLeft, teks: `Atasan berubah: ${atasanLama} → ${atasanBaru}.`,
       judul: `Pindahkan ${nama} ke tim ${atasanBaru}?`,
       pesan: editKar.id_atasan
@@ -283,7 +314,9 @@ export default function KaryawanPage() {
     const errs = {};
     if (!form.nama_lengkap.trim()) errs.nama_lengkap = 'Isi nama lengkap.';
     if (!form.dept) errs.dept = 'Pilih Marketing atau Backoffice.';
-    if (form.dept === 'Marketing' && !form.id_atasan) errs.id_atasan = 'Pilih atasan dari Backoffice.';
+    if (form.dept === 'Marketing' && !form.marketing_leader && !form.id_atasan) errs.id_atasan = 'Pilih atasan, atau centang Marketing leader.';
+    if (editKar?.marketing_leader && !form.marketing_leader && bawahanOf(editKar.id).length > 0)
+      errs.marketing_leader = `Masih membawahi ${bawahanOf(editKar.id).length} Marketing. Pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`;
     if (form.dept && !form.jabatan) errs.jabatan = 'Pilih job role.';
     if (!form.id_lokasi) errs.id_lokasi = 'Pilih lokasi kerja.';
     if (form.pakaiKhusus && form.allowance_khusus === null) errs.allowance = 'Isi nominal allowance khusus, atau hilangkan centangnya.';
@@ -294,7 +327,8 @@ export default function KaryawanPage() {
     const payload = {
       nama_lengkap: form.nama_lengkap.trim(),
       id_departemen: deptIdByName[form.dept],
-      id_atasan: form.dept === 'Marketing' ? form.id_atasan : null,
+      id_atasan: form.dept === 'Marketing' && !form.marketing_leader ? form.id_atasan : null,
+      marketing_leader: form.dept === 'Marketing' && form.marketing_leader,
       jabatan: form.jabatan,
       id_lokasi: form.id_lokasi,
       allowance_khusus: form.pakaiKhusus ? form.allowance_khusus : null,
@@ -449,7 +483,7 @@ export default function KaryawanPage() {
     setShowManual(false);
   };
 
-  const getStyleInput = (isError) => `w-full px-3 py-2 border rounded-lg mt-1 outline-none transition-colors text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
+  const getStyleInput = (isError) => `w-full px-3 py-2.5 border rounded-lg mt-1 outline-none transition-colors text-base sm:text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
   return (
     <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -505,12 +539,15 @@ export default function KaryawanPage() {
                       <span className={`inline-block px-2.5 py-1 text-[10px] font-bold rounded border tracking-wide ${dept === 'Marketing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : dept === 'Backoffice' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                         {dept || 'Tanpa Departemen'}{kar.jabatan && kar.jabatan !== dept ? ` · ${kar.jabatan}` : ''}
                       </span>
-                      {dept === 'Marketing' && (
+                      {dept === 'Marketing' && kar.marketing_leader && (
+                        <p className="text-xs mt-1.5 font-semibold text-emerald-700">Marketing leader</p>
+                      )}
+                      {dept === 'Marketing' && !kar.marketing_leader && (
                         <p className={`text-xs mt-1.5 ${atasan ? 'text-slate-500' : 'text-rose-600 font-semibold'}`}>
                           {atasan ? `Atasan: ${atasan.nama_lengkap}` : 'Belum punya atasan. Klik edit untuk memilih.'}
                         </p>
                       )}
-                      {jabatanAtasan.has(kar.jabatan) && (
+                      {bisaMembawahi(kar) && (
                         <p className="text-xs mt-1.5 text-slate-500">Membawahi {bawahan.length} Marketing</p>
                       )}
                       {kar.id_lokasi && (
@@ -566,14 +603,17 @@ export default function KaryawanPage() {
 
       {/* MODAL TAMBAH / EDIT KARYAWAN */}
       {showModal && (
-        <Modal judul={editKar ? 'Edit Karyawan' : 'Tambah Karyawan'} onClose={() => setShowModal(false)}>
-          <form onSubmit={handleSimpanKaryawan} className="p-6 space-y-5">
+        <Modal judul={editKar ? `Edit Karyawan · ${editKar.nama_lengkap}` : 'Tambah Karyawan'} onClose={() => setShowModal(false)} lebar="sm:max-w-4xl">
+          <form onSubmit={handleSimpanKaryawan} className="p-5 sm:p-6">
+           <div className="grid md:grid-cols-2 gap-x-8 gap-y-5">
+            <div className="space-y-5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Data karyawan</p>
             <div>
               <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
               <div className="grid grid-cols-2 gap-2 mt-1">
                 {['Marketing', 'Backoffice'].map(d => (
                   <button type="button" key={d} onClick={() => { const roles = jabatanDept(d); setForm({ ...form, dept: d, id_atasan: d === 'Marketing' ? form.id_atasan : '', jabatan: roles.some(r => r.nama === form.jabatan) ? form.jabatan : (roles.length === 1 ? roles[0].nama : '') }); setErrorsKar({}); }}
-                    className={`py-2 rounded-lg border text-sm font-bold transition-colors ${form.dept === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{d}</button>
+                    className={`py-2.5 rounded-lg border text-sm font-bold transition-colors ${form.dept === d ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{d}</button>
                 ))}
               </div>
               <ErrText msg={errorsKar.dept} />
@@ -592,12 +632,23 @@ export default function KaryawanPage() {
 
             {form.dept === 'Marketing' && (
               <div>
-                <label className="text-sm font-semibold text-slate-700">Atasan (Backoffice) <span className="text-rose-500">*</span></label>
+                <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 text-sm cursor-pointer hover:bg-slate-50">
+                  <input type="checkbox" className="mt-0.5" checked={form.marketing_leader}
+                    onChange={e => { setForm({ ...form, marketing_leader: e.target.checked }); setErrorsKar({ ...errorsKar, id_atasan: null, marketing_leader: null }); }} />
+                  <span><b className="font-semibold text-slate-800">Marketing leader</b><br /><span className="text-slate-500">Tidak punya atasan dan bisa membawahi karyawan Marketing lain.</span></span>
+                </label>
+                <ErrText msg={errorsKar.marketing_leader} />
+              </div>
+            )}
+
+            {form.dept === 'Marketing' && !form.marketing_leader && (
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Atasan <span className="text-rose-500">*</span></label>
                 <select value={form.id_atasan} onChange={e => { setForm({ ...form, id_atasan: e.target.value }); setErrorsKar({ ...errorsKar, id_atasan: null }); }} className={getStyleInput(errorsKar.id_atasan)}>
                   <option value="">-- Pilih Atasan --</option>
-                  {daftarBM.filter(b => b.id !== editKar?.id).map(b => <option key={b.id} value={b.id}>{b.nama_lengkap} · {b.jabatan}</option>)}
+                  {daftarBM.filter(b => b.id !== editKar?.id).map(b => <option key={b.id} value={b.id}>{labelAtasan(b)}</option>)}
                 </select>
-                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada atasan. Tambahkan dulu karyawan Backoffice dengan job role yang bisa jadi atasan.</p>}
+                {daftarBM.length === 0 && <p className="text-[11px] text-amber-600 mt-1">Belum ada atasan. Tambahkan dulu Business Manager (Backoffice) atau Marketing leader.</p>}
                 <ErrText msg={errorsKar.id_atasan} />
               </div>
             )}
@@ -615,6 +666,20 @@ export default function KaryawanPage() {
               <label className="text-sm font-semibold text-slate-700">Nama Lengkap <span className="text-rose-500">*</span></label>
               <input type="text" value={form.nama_lengkap} onChange={e => { setForm({ ...form, nama_lengkap: e.target.value }); setErrorsKar({ ...errorsKar, nama_lengkap: null }); }} className={getStyleInput(errorsKar.nama_lengkap)} placeholder="Contoh: Aris Wijaya" />
               <ErrText msg={errorsKar.nama_lengkap} />
+            </div>
+            </div>
+
+            <div className="space-y-5 md:border-l md:border-slate-100 md:pl-8">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Akun & allowance</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">NIP (Otomatis)</label>
+                <input type="text" value={editKar ? editKar.nip : 'GIFX' + tanggalWIB().slice(2, 4) + '####'} disabled className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Username (Otomatis)</label>
+                <input type="text" value={editKar ? editKar.username : 'sama dengan NIP'} disabled className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
+              </div>
             </div>
 
             {(() => {
@@ -640,43 +705,34 @@ export default function KaryawanPage() {
               );
             })()}
 
-            <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">NIP (Otomatis)</label>
-                <input type="text" value={editKar ? editKar.nip : 'GIFX' + tanggalWIB().slice(2, 4) + '####'} disabled className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
-              </div>
-              <div>
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Username (Otomatis)</label>
-                <input type="text" value={editKar ? editKar.username : 'sama dengan NIP'} disabled className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 text-sm cursor-not-allowed font-mono shadow-inner" />
-              </div>
-            </div>
-
             {editKar && <BagianTtd idKaryawan={editKar.id} nama={editKar.nama_lengkap} />}
+            </div>
+           </div>
 
             {perubahan && (
-              <div className="px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-medium flex items-center gap-2">
+              <div className="mt-5 px-3 py-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-medium flex items-center gap-2">
                 <IconPerubahan className="w-4 h-4 shrink-0" /> {perubahan.teks}
               </div>
             )}
 
-            <div className="flex justify-end gap-3 pt-2">
-              <button type="button" onClick={() => setShowModal(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
-              <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Menyimpan...' : (editKar ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}</button>
-            </div>
+            <FooterModal>
+              <button type="button" onClick={() => setShowModal(false)} className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
+              <button type="submit" disabled={loading} className="flex-[2] sm:flex-none px-6 py-2.5 text-white font-medium bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">{loading ? 'Menyimpan...' : (editKar ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}</button>
+            </FooterModal>
           </form>
         </Modal>
       )}
 
       {/* MODAL TRANSFER BAWAHAN */}
       {transfer && (
-        <Modal judul={`Pindahkan bawahan ${transfer.dari.nama_lengkap}`} onClose={() => setTransfer(null)}>
-          <div className="p-6 space-y-4">
+        <Modal judul={`Pindahkan bawahan ${transfer.dari.nama_lengkap}`} onClose={() => setTransfer(null)} lebar="sm:max-w-xl">
+          <div className="p-5 sm:p-6 space-y-4">
             <div>
               <p className="text-sm font-semibold text-slate-700 mb-2">Pilih Marketing yang dipindah</p>
-              <ul className="space-y-1 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-2">
+              <ul className="space-y-1 max-h-[40dvh] overflow-y-auto border border-slate-200 rounded-lg p-2">
                 {bawahanOf(transfer.dari.id).map(k => (
                   <li key={k.id}>
-                    <label className="flex items-center gap-2 text-sm p-1.5 rounded hover:bg-slate-50 cursor-pointer">
+                    <label className="flex items-center gap-2 text-sm p-2 rounded hover:bg-slate-50 cursor-pointer">
                       <input type="checkbox" checked={transfer.ids.includes(k.id)} onChange={e => setTransfer({ ...transfer, ids: e.target.checked ? [...transfer.ids, k.id] : transfer.ids.filter(x => x !== k.id) })} />
                       {k.nama_lengkap} <span className="text-xs text-slate-400 font-mono">{k.nip}</span>
                     </label>
@@ -685,24 +741,24 @@ export default function KaryawanPage() {
               </ul>
             </div>
             <div>
-              <label className="text-sm font-semibold text-slate-700">Ke Business Manager</label>
+              <label className="text-sm font-semibold text-slate-700">Ke atasan</label>
               <select value={transfer.ke} onChange={e => setTransfer({ ...transfer, ke: e.target.value })} className={getStyleInput(false)}>
                 <option value="">-- Pilih Tujuan --</option>
-                {daftarBM.filter(b => b.id !== transfer.dari.id).map(b => <option key={b.id} value={b.id}>{b.nama_lengkap}</option>)}
+                {daftarBM.filter(b => b.id !== transfer.dari.id).map(b => <option key={b.id} value={b.id}>{labelAtasan(b)}</option>)}
               </select>
             </div>
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setTransfer(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200">Batal</button>
-              <button onClick={simpanTransfer} disabled={loading || !transfer.ke || transfer.ids.length === 0} className="px-6 py-2 text-white font-medium bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{loading ? 'Memindahkan...' : 'Pindahkan'}</button>
-            </div>
+            <FooterModal>
+              <button onClick={() => setTransfer(null)} className="flex-1 sm:flex-none px-4 py-2.5 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200">Batal</button>
+              <button onClick={simpanTransfer} disabled={loading || !transfer.ke || transfer.ids.length === 0} className="flex-[2] sm:flex-none px-6 py-2.5 text-white font-medium bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">{loading ? 'Memindahkan...' : 'Pindahkan'}</button>
+            </FooterModal>
           </div>
         </Modal>
       )}
 
       {/* MODAL RIWAYAT STRUKTUR */}
       {riwayat && (
-        <Modal judul={`Riwayat Struktur ${riwayat.kar.nama_lengkap}`} onClose={() => setRiwayat(null)} lebar="max-w-lg">
-          <div className="p-6">
+        <Modal judul={`Riwayat Struktur ${riwayat.kar.nama_lengkap}`} onClose={() => setRiwayat(null)} lebar="sm:max-w-2xl">
+          <div className="p-5 sm:p-6">
             {riwayat.rows.length === 0 ? <p className="text-sm text-slate-500 italic">Belum ada riwayat.</p> : (
               <ol className="space-y-3">
                 {riwayat.rows.map(r => (
@@ -723,23 +779,24 @@ export default function KaryawanPage() {
 
       {/* MODAL INPUT MANUAL */}
       {showManual && manual && (
-        <Modal judul={`Input Manual: ${manual.kar.nama_lengkap}`} onClose={() => setShowManual(false)}>
-          <form onSubmit={simpanManual} className="p-6 space-y-4">
+        <Modal judul={`Input Manual: ${manual.kar.nama_lengkap}`} onClose={() => setShowManual(false)} lebar="sm:max-w-2xl">
+          <form onSubmit={simpanManual} className="p-5 sm:p-6 space-y-4">
             <div className="px-3 py-2 bg-indigo-50 border border-indigo-100 text-indigo-700 rounded-lg text-xs font-medium flex items-center gap-2">
               <Clock className="w-4 h-4 shrink-0" /> {manual.info}
             </div>
 
-            <div>
-              <label className="text-sm font-semibold text-slate-700">Tanggal <span className="text-rose-500">*</span></label>
-              <input type="date" value={manual.tanggal} onChange={e => e.target.value && muatManual(manual.kar, e.target.value)} className={getStyleInput(errorsManual.tanggal)} />
-              <ErrText msg={errorsManual.tanggal} />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-slate-700">Jenis <span className="text-rose-500">*</span></label>
-              <select value={manual.jenis} onChange={e => { setManual({ ...manual, jenis: e.target.value }); setErrorsManual({}); }} className={getStyleInput(false)}>
-                {JENIS_MANUAL.map(j => <option key={j.v} value={j.v}>{j.l}</option>)}
-              </select>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Tanggal <span className="text-rose-500">*</span></label>
+                <input type="date" value={manual.tanggal} onChange={e => e.target.value && muatManual(manual.kar, e.target.value)} className={getStyleInput(errorsManual.tanggal)} />
+                <ErrText msg={errorsManual.tanggal} />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700">Jenis <span className="text-rose-500">*</span></label>
+                <select value={manual.jenis} onChange={e => { setManual({ ...manual, jenis: e.target.value }); setErrorsManual({}); }} className={getStyleInput(false)}>
+                  {JENIS_MANUAL.map(j => <option key={j.v} value={j.v}>{j.l}</option>)}
+                </select>
+              </div>
             </div>
 
             {manual.jenis === 'Hadir' ? (
@@ -784,13 +841,13 @@ export default function KaryawanPage() {
               </div>
             )}
 
-            <div className="flex justify-between gap-3 border-t border-slate-100 pt-5 mt-2">
+            <FooterModal className="justify-between">
               <button type="button" onClick={kosongkanManual} disabled={loading || (!manual.absensiId && !manual.izinId)} className="px-3 py-2 text-rose-600 text-sm font-medium rounded-lg hover:bg-rose-50 disabled:opacity-30 disabled:hover:bg-transparent">Kosongkan</button>
               <div className="flex gap-3">
-                <button type="button" onClick={() => setShowManual(false)} className="px-4 py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
-                <button type="submit" disabled={loading} className="px-6 py-2 text-white font-medium bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">{loading ? 'Menyimpan...' : 'Simpan'}</button>
+                <button type="button" onClick={() => setShowManual(false)} className="px-4 py-2.5 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors">Batal</button>
+                <button type="submit" disabled={loading} className="px-6 py-2.5 text-white font-medium bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-colors">{loading ? 'Menyimpan...' : 'Simpan'}</button>
               </div>
-            </div>
+            </FooterModal>
           </form>
         </Modal>
       )}

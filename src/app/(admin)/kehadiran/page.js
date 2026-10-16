@@ -151,7 +151,7 @@ export default function KehadiranPage() {
                       <p className="text-xs text-slate-500 mt-0.5">
                         <span className="font-mono">{r.nip}</span>
                         {r.jabatan && <span> · {r.jabatan}</span>}
-                        {r.nama_atasan && <span> · Tim {r.nama_atasan}</span>}
+                        {r.nama_departemen === 'Marketing' && <span> · {r.nama_atasan ? `Tim ${r.nama_atasan}` : 'Leader tim'}</span>}
                         {r.nama_lokasi && <span> · {r.nama_lokasi}</span>}
                       </p>
                     </td>

@@ -40,7 +40,7 @@ function Slip({ r, periodeLabel }) {
     ['NAMA', info.nama || r.nama],
   ];
   return (
-    <article className="bg-white border border-slate-200 rounded-xl p-6 break-inside-avoid print:rounded-none print:border-slate-400 print:mb-4">
+    <article className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 print:p-6 break-inside-avoid print:rounded-none print:border-slate-400 print:mb-4">
       <h3 className="text-center font-bold underline underline-offset-4 text-slate-900">TANDA TERIMA ALLOWANCE {periodeLabel.toUpperCase()}</h3>
       <dl className="mt-5 grid grid-cols-[110px_1fr] gap-y-1.5 text-sm">
         {baris.map(([k, v]) => (
@@ -277,9 +277,10 @@ export default function RekapAllowance() {
 
       {/* ===== Tabel ===== */}
       <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden ${slip ? 'print:hidden' : ''}`}>
-        <div className="overflow-x-auto">
+        {/* Tabel punya scroll sendiri supaya header kolom (dan baris total) tetap terlihat saat di-scroll */}
+        <div className="overflow-auto max-h-[calc(100vh-10rem)] min-h-[16rem]">
           <table className="w-full text-sm text-left text-slate-600 min-w-[1080px]">
-            <thead className="bg-slate-50 text-slate-500 text-xs border-b border-slate-200">
+            <thead className="sticky top-0 z-20 bg-slate-50 text-slate-500 text-xs shadow-[inset_0_-1px_0_rgb(226,232,240)]">
               <tr>
                 <th className="px-4 py-3 w-10"><input type="checkbox" aria-label="Pilih semua" checked={semuaTerpilih} onChange={e => pilihSemua(e.target.checked)} /></th>
                 <th className="px-4 py-3 font-semibold">Karyawan</th>
@@ -339,7 +340,7 @@ export default function RekapAllowance() {
               })}
             </tbody>
             {!loading && tampil.length > 0 && (
-              <tfoot className="bg-slate-50 border-t border-slate-200 text-sm">
+              <tfoot className="sticky bottom-0 z-20 bg-slate-50 text-sm shadow-[inset_0_1px_0_rgb(226,232,240)]">
                 <tr>
                   <td colSpan="5" className="px-4 py-3 text-right font-semibold text-slate-600">Total {tampil.length} karyawan</td>
                   <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums whitespace-nowrap">{formatRupiah(totalTampil)}</td>
@@ -379,15 +380,15 @@ export default function RekapAllowance() {
       {/* ===== Preview & cetak slip ===== */}
       {slip && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm overflow-y-auto print:static print:bg-white print:backdrop-blur-0 print:overflow-visible">
-          <div className="max-w-2xl mx-auto my-8 bg-slate-100 rounded-2xl shadow-xl print:shadow-none print:bg-white print:my-0 print:max-w-none">
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-5 py-3 bg-white rounded-t-2xl border-b border-slate-200 print:hidden">
-              <p className="font-semibold text-slate-900">Slip allowance {periodeLabel} · {slip.length} karyawan</p>
-              <div className="flex gap-2">
-                <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"><Printer className="w-4 h-4" />Cetak / PDF</button>
+          <div className="max-w-2xl mx-auto min-h-full sm:min-h-0 sm:my-8 bg-slate-100 sm:rounded-2xl shadow-xl print:shadow-none print:bg-white print:my-0 print:max-w-none">
+            <div className="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 sm:px-5 py-3 bg-white sm:rounded-t-2xl border-b border-slate-200 print:hidden">
+              <p className="font-semibold text-slate-900 min-w-0 text-sm sm:text-base">Slip allowance {periodeLabel} · {slip.length} karyawan</p>
+              <div className="flex gap-2 shrink-0">
+                <button onClick={() => window.print()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"><Printer className="w-4 h-4" /><span className="hidden sm:inline">Cetak / PDF</span><span className="sm:hidden">Cetak</span></button>
                 <button onClick={() => setSlip(null)} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" aria-label="Tutup"><X className="w-5 h-5" /></button>
               </div>
             </div>
-            <div className="p-5 space-y-4 print:p-0 print:space-y-0">
+            <div className="p-3 sm:p-5 space-y-4 print:p-0 print:space-y-0">
               {slip.map(r => <Slip key={r.id_karyawan} r={lengkap.find(x => x.id_karyawan === r.id_karyawan) || r} periodeLabel={periodeLabel} />)}
             </div>
           </div>

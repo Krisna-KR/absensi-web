@@ -4,6 +4,7 @@ import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
 import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight } from 'lucide-react';
 import NotifAllowance from '@/components/NotifAllowance';
+import RiwayatKehadiran from '@/components/RiwayatKehadiran';
 import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
 import { hitungStatus, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
@@ -59,7 +60,7 @@ export default function MobileScannerPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [hasilScan, setHasilScan] = useState(null); // { sukses, judul, pesan }
-  const [tab, setTab] = useState('home');           // 'home' | 'notif'
+  const [tab, setTab] = useState('home');           // 'home' | 'history' | 'notif'
   const [allowance, setAllowance] = useState([]);
   const [pilihShift, setPilihShift] = useState(false);
   const shiftRef = useRef(null);
@@ -394,6 +395,10 @@ export default function MobileScannerPage() {
         )}
 
         {/* FASE 2: DASHBOARD */}
+        {step === 2 && tab === 'history' && (
+          <RiwayatKehadiran onSesiHabis={() => keluarSesi('Sesimu berakhir. Login lagi.')} />
+        )}
+
         {step === 2 && tab === 'home' && (
           <div className="flex-1 flex flex-col items-center pt-8 px-6 pb-24 overflow-y-auto">
              <h2 className="text-3xl font-black text-slate-900">Absensi</h2>
@@ -522,7 +527,7 @@ export default function MobileScannerPage() {
         {step === 2 && (
           <div className="absolute bottom-0 left-0 right-0 bg-white text-slate-400 flex justify-around items-center py-4 border-t border-slate-200 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-20">
             <button onClick={() => setTab('home')} className={`flex flex-col items-center transition-all ${tab === 'home' ? 'text-blue-600' : 'hover:text-blue-600'}`}><LayoutGrid className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HOME</span></button>
-            <button className="flex flex-col items-center transition-all hover:text-blue-600"><Clock className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HISTORY</span></button>
+            <button onClick={() => setTab('history')} className={`flex flex-col items-center transition-all ${tab === 'history' ? 'text-blue-600' : 'hover:text-blue-600'}`}><Clock className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HISTORY</span></button>
             <button onClick={() => { setTab('notif'); fetchAllowance(); }} className={`relative flex flex-col items-center transition-all ${tab === 'notif' ? 'text-blue-600' : 'hover:text-blue-600'}`}>
               <Bell className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">NOTIF</span>
               {menungguApprove > 0 && <span className="absolute -top-1.5 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{menungguApprove}</span>}

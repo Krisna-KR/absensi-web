@@ -5,8 +5,8 @@ export function pesanError(error) {
   const kode = error.code;
 
   // Pesan dari trigger validasi struktur (RAISE EXCEPTION)
-  if (pesan.includes('Marketing wajib memiliki 1 atasan')) return 'Pilih Business Manager untuk karyawan Marketing ini.';
-  if (pesan.includes('Atasan Marketing harus')) return 'Atasan Marketing harus karyawan Backoffice aktif dengan job role yang bisa jadi atasan. Pilih atasan lain.';
+  if (pesan.includes('Marketing wajib memiliki 1 atasan')) return 'Pilih atasan untuk karyawan Marketing ini, atau centang Marketing leader.';
+  if (pesan.includes('Atasan Marketing harus')) return 'Atasan Marketing harus Business Manager (Backoffice) atau Marketing leader yang aktif. Pilih atasan lain.';
   if (pesan.includes('bukan milik departemen')) return 'Job role yang dipilih bukan milik departemen ini. Pilih job role lain.';
   if (pesan.includes('Hanya job role Backoffice yang bisa jadi atasan')) return 'Hanya job role Backoffice yang boleh ditandai bisa jadi atasan.';
   if (pesan.includes('Departemen job role yang sudah dipakai')) return 'Job role ini sudah dipakai karyawan, jadi departemennya tidak bisa diganti.';
@@ -18,7 +18,7 @@ export function pesanError(error) {
   if (pesan === 'TTD_TIDAK_VALID') return 'Gambar tanda tangan tidak bisa disimpan. Coba coret ulang.';
   if (pesan.includes('Jabatan Backoffice harus')) return 'Pilih jabatan Backoffice: Business Manager, IT, atau Admin.';
   const bawahan = pesan.match(/Masih membawahi (\d+) Marketing/);
-  if (bawahan) return `Karyawan ini masih membawahi ${bawahan[1]} Marketing. Pindahkan dulu bawahannya ke Business Manager lain lewat tombol Pindahkan bawahan.`;
+  if (bawahan) return `Karyawan ini masih membawahi ${bawahan[1]} Marketing. Pindahkan dulu bawahannya ke atasan lain lewat tombol Pindahkan bawahan.`;
 
   // Constraint database
   if (kode === '23505') {
