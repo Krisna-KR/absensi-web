@@ -2,7 +2,9 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { FeedbackProvider } from "@/components/Feedback";
 
-const inter = Inter({ subsets: ["latin"] });
+// fallback: dipakai browser kalau Inter tidak bisa dipakai (mis. daftar pilihan <select> di Windows),
+// supaya tidak jatuh ke font serif (Times New Roman)
+const inter = Inter({ subsets: ["latin"], fallback: ["system-ui", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"] });
 
 export const metadata = {
   title: "Absensi GIFX",

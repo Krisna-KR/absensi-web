@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Save, Send, Lock, FileText, Printer, X, Loader2, CheckCircle2, Clock, RotateCcw, PenLine } from 'lucide-react';
+import { Search, Save, Send, Lock, FileText, Printer, X, Loader2, CheckCircle2, Clock, RotateCcw, PenLine, RefreshCw } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
@@ -98,6 +98,8 @@ export default function RekapAllowance() {
   const [filterStatus, setFilterStatus] = useState('semua');
   const [sibuk, setSibuk] = useState('');
   const [slip, setSlip] = useState(null);          // daftar baris yang dipreview
+  const [segarkan, setSegarkan] = useState(false);  // sedang refresh data (tanpa mengosongkan tabel)
+  const [dimuatAt, setDimuatAt] = useState(null);   // jam data terakhir diambil
 
   useEffect(() => {
     let batal = false;
@@ -107,10 +109,23 @@ export default function RekapAllowance() {
       if (batal) return;
       setLoading(false);
       if (error) { setGalat(pesanError(error)); setRows([]); return; }
-      setGalat(''); setRows(data || []);
+      setGalat(''); setRows(data || []); setDimuatAt(new Date());
     })();
     return () => { batal = true; };
   }, [periode, versi]);
+
+  // Ambil ulang data saja: filter, pencarian, pilihan, dan isian yang belum disimpan tetap
+  const refresh = async () => {
+    setSegarkan(true);
+    const { data, error } = await supabase.rpc('fn_allowance_daftar', { p_periode: periode });
+    setSegarkan(false);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    const baru = data || [];
+    const bisaDiubah = new Set(baru.filter(r => bisaDiedit(r.status)).map(r => r.id_karyawan));
+    // isian untuk baris yang sudah terkunci (mis. sudah dikirim dari tab lain) dibuang
+    setUbah(u => Object.fromEntries(Object.entries(u).filter(([id]) => bisaDiubah.has(id))));
+    setRows(baru); setGalat(''); setDimuatAt(new Date());
+  };
 
   // Nilai yang tampil = hasil edit (kalau ada) atau data tersimpan
   const lengkap = useMemo(() => rows.map(r => {
@@ -144,9 +159,9 @@ export default function RekapAllowance() {
   const jumlahStatus = useMemo(() => Object.fromEntries(FILTER_STATUS.map(f => [f.key, lengkap.filter(f.cocok).length])), [lengkap]);
   const kotor = lengkap.filter(r => r.kotor);
   const dipilih = tampil.filter(r => pilih.has(r.id_karyawan));
-  // Tanpa pilihan, tombol bekerja untuk semua baris yang tampil
-  const targetKirim = (dipilih.length ? dipilih : tampil).filter(r => bisaDiedit(r.status));
-  const targetFinal = (dipilih.length ? dipilih : tampil).filter(r => r.status === 'DISETUJUI');
+  // Proses & kirim / Finalisasi hanya untuk baris yang dicentang
+  const targetKirim = dipilih.filter(r => bisaDiedit(r.status));
+  const targetFinal = dipilih.filter(r => r.status === 'DISETUJUI');
   const totalTampil = tampil.reduce((t, r) => t + r.totalTampil, 0);
 
   const aturNilai = (id, kolom, nilai) => {
@@ -232,7 +247,7 @@ export default function RekapAllowance() {
       {/* ===== Header & filter ===== */}
       <div className={`bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4 ${slip ? 'print:hidden' : ''}`}>
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-3">
-          <div><h1 className="text-2xl font-bold text-slate-900">Allowance</h1><p className="text-sm text-slate-500 mt-1">Allowance {periodeLabel} · {rows.length} karyawan</p></div>
+          <div><h1 className="text-2xl font-bold text-slate-900">Allowance</h1><p className="text-sm text-slate-500 mt-1">Allowance {periodeLabel} · {rows.length} karyawan{dimuatAt && <span className="text-slate-400"> · diperbarui {dimuatAt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' })}</span>}</p></div>
           <div className="flex flex-wrap items-end gap-2">
             <label className="text-xs text-slate-500">Bulan
               <select value={bulan} onChange={e => gantiPeriode(() => setBulan(Number(e.target.value)))} className={`${kelasSelect} block mt-1`}>
@@ -242,6 +257,10 @@ export default function RekapAllowance() {
             <label className="text-xs text-slate-500">Tahun
               <input type="number" value={tahun} min="2024" max="2100" onChange={e => { const v = Number(e.target.value); if (v > 2000) gantiPeriode(() => setTahun(v)); }} className={`${kelasSelect} block mt-1 w-24`} />
             </label>
+            <button onClick={refresh} disabled={segarkan || loading} title="Ambil data terbaru tanpa mengubah filter"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-40">
+              <RefreshCw className={`w-4 h-4 ${segarkan ? 'animate-spin' : ''}`} />Refresh
+            </button>
             <button onClick={() => setSlip(dipilih.length ? dipilih : tampil)} disabled={!tampil.length}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 text-slate-700 text-sm font-semibold hover:bg-slate-50 disabled:opacity-40">
               <FileText className="w-4 h-4" />Preview slip{dipilih.length ? ` (${dipilih.length})` : ''}
@@ -356,7 +375,9 @@ export default function RekapAllowance() {
       <div className={`fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(15,23,42,0.06)] ${slip ? 'hidden' : 'print:hidden'}`}>
         <div className="max-w-screen-2xl mx-auto px-6 py-3 flex flex-wrap items-center gap-3">
           <span className={`text-sm font-medium px-3 py-1 rounded-full ${kotor.length ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{kotor.length} perubahan</span>
-          {dipilih.length > 0 && <span className="text-sm text-blue-700">{dipilih.length} dipilih</span>}
+          {dipilih.length > 0
+            ? <span className="text-sm text-blue-700">{dipilih.length} dipilih</span>
+            : <span className="text-sm text-slate-500">Centang karyawan untuk diproses atau difinalisasi</span>}
           <div className="ml-auto flex flex-wrap gap-2">
             {kotor.length > 0 && (
               <button onClick={() => setUbah({})} disabled={!!sibuk} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-slate-600 text-sm font-medium hover:bg-slate-100"><RotateCcw className="w-4 h-4" />Batalkan</button>
@@ -367,11 +388,11 @@ export default function RekapAllowance() {
             </button>
             <button onClick={kirim} disabled={!targetKirim.length || !!sibuk}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 disabled:opacity-40">
-              {sibuk === 'kirim' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Proses & kirim ({targetKirim.length})
+              {sibuk === 'kirim' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}Proses & kirim{targetKirim.length ? ` (${targetKirim.length})` : ''}
             </button>
             <button onClick={finalisasi} disabled={!targetFinal.length || !!sibuk}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800 disabled:opacity-40">
-              {sibuk === 'final' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Finalisasi ({targetFinal.length})
+              {sibuk === 'final' ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}Finalisasi{targetFinal.length ? ` (${targetFinal.length})` : ''}
             </button>
           </div>
         </div>
