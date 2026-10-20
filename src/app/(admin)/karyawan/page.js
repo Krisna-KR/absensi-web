@@ -19,6 +19,15 @@ const SHIFT = [
   { no: 1, label: 'Shift 1 (07.00–15.00)' },
   { no: 2, label: 'Shift 2 (12.00–20.00)' },
 ];
+// Alasan input manual (jenis Hadir). "Lainnya" = isi sendiri.
+const ALASAN_MANUAL = [
+  'Appointment dengan client',
+  'HP / kamera rusak',
+  'Lupa scan absen',
+  'Kendala sinyal / aplikasi error',
+  'Dinas luar / training / event',
+];
+const LAINNYA = 'Lainnya (tulis sendiri)';
 const JENIS_MANUAL = [
   { v: 'Hadir', l: 'Hadir (input jam masuk / pulang)' },
   { v: 'Izin', l: 'Izin (kepentingan pribadi)' },
@@ -828,10 +837,30 @@ export default function KaryawanPage() {
                     ? 'Status dihitung otomatis: masuk lewat jam mulai shift = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Format 24 jam WIB.'
                     : 'Status dihitung otomatis: masuk lewat 09:00 = Terlambat, hanya jam pulang (tanpa jam masuk) = Terlambat. Jam kerja 09:00–17:00, format 24 jam WIB.'}
                 </p>
-                <div>
-                  <label className="text-sm font-semibold text-slate-700">Alasan Input Manual</label>
-                  <input type="text" placeholder="Contoh: HP rusak / kamera tidak bisa diakses" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />
-                </div>
+                {(() => {
+                  // Nilai dropdown: salah satu alasan baku, atau "Lainnya" untuk teks bebas (juga untuk keterangan lama)
+                  const pilihan = manual.alasanLain || (manual.keterangan && !ALASAN_MANUAL.includes(manual.keterangan)) ? LAINNYA : manual.keterangan;
+                  return (
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-sm font-semibold text-slate-700">Alasan Input Manual</label>
+                        <select value={pilihan || ''} onChange={e => {
+                          const v = e.target.value;
+                          setManual(v === LAINNYA
+                            ? { ...manual, alasanLain: true, keterangan: ALASAN_MANUAL.includes(manual.keterangan) ? '' : manual.keterangan }
+                            : { ...manual, alasanLain: false, keterangan: v });
+                        }} className={getStyleInput(false)}>
+                          <option value="">-- Pilih alasan --</option>
+                          {ALASAN_MANUAL.map(a => <option key={a} value={a}>{a}</option>)}
+                          <option value={LAINNYA}>{LAINNYA}</option>
+                        </select>
+                      </div>
+                      {pilihan === LAINNYA && (
+                        <input type="text" autoFocus placeholder="Tulis alasannya" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             ) : (
               <div>

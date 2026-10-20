@@ -6,6 +6,7 @@ import { rentangPeriode, tanggalWIB, geserTanggal, formatTanggal, jamMenitWIB, N
 import { ambilKehadiran, WARNA_STATUS } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { GrafikBatang, Legenda, BatangKomposisi, DaftarBatang } from '@/components/Grafik';
+import HeaderSapaan from '@/components/HeaderSapaan';
 
 const PERIODE = [
   { key: 'hari_ini', label: 'Hari ini' },
@@ -169,6 +170,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
+      <HeaderSapaan />
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
         <div className="inline-flex p-1 bg-white border border-slate-200 rounded-lg shadow-sm" role="tablist" aria-label="Periode">

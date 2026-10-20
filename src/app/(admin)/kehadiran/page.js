@@ -5,6 +5,7 @@ import { rentangPeriode, formatJam, formatTanggal } from '@/utils/waktu';
 import { ambilKehadiran, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
+import TidakMasuk from '@/components/TidakMasuk';
 
 const PER_HALAMAN = 50;
 
@@ -119,6 +120,8 @@ export default function KehadiranPage() {
       </div>
 
       {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Data kehadiran belum bisa dimuat. {galat}</div>}
+
+      <TidakMasuk />
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
