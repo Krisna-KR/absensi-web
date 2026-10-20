@@ -150,7 +150,7 @@ export default function KaryawanPage() {
     let batal = false;
     (async () => {
       const [{ data: deptData }, { data: jabData }, { data: lokData }, { data: karData, error }] = await Promise.all([
-        supabase.from('master_departemen').select('id, nama_departemen'),
+        supabase.from('master_departemen').select('id, nama_departemen, allowance_flat'),
         supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama'),
         supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang'),
         supabase.from('karyawan').select(KOLOM_KARYAWAN).order('created_at', { ascending: false }),
@@ -192,6 +192,8 @@ export default function KaryawanPage() {
   const labelAtasan = (b) => `${b.nama_lengkap} · ${b.jabatan}`;
   // Marketing dengan job role "bisa jadi atasan" (Business Manager) = kepala tim, tidak punya atasan
   const formKepalaTim = form.dept === 'Marketing' && jabatanAtasan.has(form.jabatan);
+  // Departemen dengan allowance flat (nominal dari job role / allowance khusus); lainnya diisi manual tiap bulan
+  const deptFlat = !!departemen.find(d => d.nama_departemen === form.dept)?.allowance_flat;
 
   // =================== AKSI CEPAT ===================
   const aksiApprove = async (kar) => {
@@ -320,7 +322,7 @@ export default function KaryawanPage() {
       errs.jabatan = `Masih membawahi ${bawahanOf(editKar.id).length} Marketing. Pindahkan dulu bawahannya lewat tombol Pindahkan bawahan.`;
     if (form.dept && !form.jabatan) errs.jabatan = 'Pilih job role.';
     if (!form.id_lokasi) errs.id_lokasi = 'Pilih lokasi kerja.';
-    if (form.pakaiKhusus && form.allowance_khusus === null) errs.allowance = 'Isi nominal allowance khusus, atau hilangkan centangnya.';
+    if (deptFlat && form.pakaiKhusus && form.allowance_khusus === null) errs.allowance = 'Isi nominal allowance khusus, atau hilangkan centangnya.';
     if (Object.keys(errs).length > 0) { setErrorsKar(errs); return; }
     if (perubahan && !(await konfirmasi({ judul: perubahan.judul, pesan: perubahan.pesan, tombolYa: perubahan.tombolYa }))) return;
 
@@ -674,7 +676,13 @@ export default function KaryawanPage() {
               </div>
             </div>
 
-            {(() => {
+            {form.dept && !deptFlat && (
+              <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 space-y-1">
+                <p className="text-sm font-semibold text-slate-700 inline-flex items-center gap-1.5"><Wallet className="w-4 h-4 text-slate-400" />Allowance</p>
+                <p className="text-xs text-slate-500">Allowance {form.dept} diisi manual tiap bulan di Rekap → Allowance.</p>
+              </div>
+            )}
+            {deptFlat && (() => {
               const jab = jabatanList.find(j => j.nama === form.jabatan);
               return (
                 <div className="p-3 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2">

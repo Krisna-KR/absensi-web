@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
-import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight } from 'lucide-react';
+import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight, PenLine } from 'lucide-react';
 import NotifAllowance from '@/components/NotifAllowance';
 import RiwayatKehadiran from '@/components/RiwayatKehadiran';
 import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
@@ -285,7 +285,7 @@ export default function MobileScannerPage() {
     ? !todayAbsen?.waktu_masuk && !isSelesai
     : !todayAbsen?.waktu_masuk && !isSelesai && jamWIB() < 12;
   const shiftHariIni = (karyawan?.shift || []).find(sh => sh.no === karyawan?.shift_hari_ini);
-  const menungguApprove = allowance.filter(a => a.status === 'TERKIRIM').length;
+  const allowanceBaru = allowance.filter(a => a.baru).length;   // slip baru / diperbarui yang belum dibuka
 
   return (
     <div className="min-h-screen bg-slate-50 flex justify-center text-slate-900 font-sans">
@@ -406,9 +406,14 @@ export default function MobileScannerPage() {
              <h2 className="text-3xl font-black text-slate-900">Absensi</h2>
              <p className="text-slate-500 text-sm mt-1 mb-8">Hi, {karyawan?.nama_lengkap}.</p>
              {message && <div className="w-full -mt-4 mb-6 p-3 bg-rose-50 text-rose-700 text-sm rounded-xl border border-rose-200">{message}</div>}
-             {menungguApprove > 0 && (
+             {karyawan && !karyawan.punya_ttd && (
                <button onClick={() => setTab('notif')} className="w-full -mt-4 mb-6 p-3 bg-amber-50 text-amber-800 text-sm rounded-xl border border-amber-200 flex items-center gap-2 text-left">
-                 <Wallet className="w-5 h-5 shrink-0" /><span className="flex-1"><b>{menungguApprove} allowance</b> menunggu persetujuanmu.</span><ChevronRight className="w-4 h-4" />
+                 <PenLine className="w-5 h-5 shrink-0" /><span className="flex-1"><b>Buat tanda tangan</b> supaya admin bisa mengirim allowance-mu.</span><ChevronRight className="w-4 h-4" />
+               </button>
+             )}
+             {allowanceBaru > 0 && (
+               <button onClick={() => setTab('notif')} className="w-full -mt-4 mb-6 p-3 bg-blue-50 text-blue-800 text-sm rounded-xl border border-blue-200 flex items-center gap-2 text-left">
+                 <Wallet className="w-5 h-5 shrink-0" /><span className="flex-1"><b>{allowanceBaru} slip allowance</b> baru dari admin.</span><ChevronRight className="w-4 h-4" />
                </button>
              )}
 
@@ -532,7 +537,7 @@ export default function MobileScannerPage() {
             <button onClick={() => setTab('history')} className={`flex flex-col items-center transition-all ${tab === 'history' ? 'text-blue-600' : 'hover:text-blue-600'}`}><Clock className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">HISTORY</span></button>
             <button onClick={() => { setTab('notif'); fetchAllowance(); }} className={`relative flex flex-col items-center transition-all ${tab === 'notif' ? 'text-blue-600' : 'hover:text-blue-600'}`}>
               <Bell className="w-6 h-6 mb-1.5" /><span className="text-[10px] font-bold tracking-widest">NOTIF</span>
-              {menungguApprove > 0 && <span className="absolute -top-1.5 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{menungguApprove}</span>}
+              {allowanceBaru > 0 && <span className="absolute -top-1.5 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{allowanceBaru}</span>}
             </button>
           </div>
         )}

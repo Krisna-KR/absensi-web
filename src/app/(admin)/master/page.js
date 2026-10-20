@@ -41,7 +41,7 @@ export default function MasterDataPage() {
     (async () => {
       const [l, d, j, k] = await Promise.all([
         supabase.from('master_lokasi').select('id, nama_cabang, alamat').order('nama_cabang'),
-        supabase.from('master_departemen').select('id, nama_departemen').order('nama_departemen'),
+        supabase.from('master_departemen').select('id, nama_departemen, allowance_flat').order('nama_departemen'),
         supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama'),
         supabase.from('karyawan').select('id, id_lokasi, id_departemen, jabatan, is_aktif'),
       ]);
@@ -56,6 +56,21 @@ export default function MasterDataPage() {
   const aktif = karyawan.filter(k => k.is_aktif);
   const hitung = (f) => aktif.filter(f).length;
   const namaDept = (id) => departemen.find(d => d.id === id)?.nama_departemen || '-';
+
+  // ---------- Departemen: cara isi allowance ----------
+  const ubahFlat = async (d, flat) => {
+    const ok = await konfirmasi({
+      judul: `Allowance ${d.nama_departemen} jadi ${flat ? 'flat' : 'diisi manual'}?`,
+      pesan: flat
+        ? 'Nominal allowance otomatis dari job role (atau allowance khusus karyawan). Admin tidak perlu mengisi tiap bulan.'
+        : 'Admin mengisi nominal allowance setiap bulan di Rekap → Allowance. Allowance yang sudah terkirim tidak berubah.',
+      tombolYa: 'Ubah',
+    });
+    if (!ok) return;
+    const { error } = await supabase.from('master_departemen').update({ allowance_flat: flat }).eq('id', d.id);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`Allowance ${d.nama_departemen} sekarang ${flat ? 'flat' : 'diisi manual tiap bulan'}.`); muatUlang();
+  };
 
   // ---------- Lokasi ----------
   const simpanLokasi = async (e) => {
@@ -193,6 +208,18 @@ export default function MasterDataPage() {
                 <p><span className="text-2xl font-bold text-slate-900 tabular-nums">{hitung(k => k.id_departemen === d.id)}</span> <span className="text-slate-500">karyawan aktif</span></p>
                 <p><span className="text-2xl font-bold text-slate-900 tabular-nums">{jabatan.filter(j => j.id_departemen === d.id).length}</span> <span className="text-slate-500">job role</span></p>
               </div>
+              <div className="mt-4 flex items-center justify-between gap-3 p-3 rounded-lg border border-slate-200 bg-slate-50/60">
+                <div className="text-sm">
+                  <p className="font-semibold text-slate-800">Allowance</p>
+                  <p className="text-xs text-slate-500">{d.allowance_flat ? 'Flat: otomatis dari job role / allowance khusus.' : 'Diisi manual tiap bulan di Rekap → Allowance.'}</p>
+                </div>
+                <div className="inline-flex p-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold shrink-0">
+                  {[[true, 'Flat'], [false, 'Manual']].map(([v, l]) => (
+                    <button key={l} onClick={() => !!d.allowance_flat !== v && ubahFlat(d, v)}
+                      className={`px-3 py-1.5 rounded-md transition-colors ${!!d.allowance_flat === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>{l}</button>
+                  ))}
+                </div>
+              </div>
               <div className="mt-4 flex flex-wrap gap-1.5">
                 {jabatan.filter(j => j.id_departemen === d.id).map(j => (
                   <span key={j.nama} className="px-2 py-0.5 text-xs rounded-md border border-slate-200 text-slate-600">{j.nama}</span>
@@ -223,12 +250,16 @@ export default function MasterDataPage() {
             <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 text-sm cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={formJabatan.bisa_jadi_atasan}
                 onChange={e => setFormJabatan({ ...formJabatan, bisa_jadi_atasan: e.target.checked })} />
-              <span><b className="font-semibold">Bisa jadi atasan</b><br />Karyawan dengan job role ini bisa membawahi Marketing, tidak kena aturan komisi, dan tidak bisa daftar sendiri lewat HP. Di Marketing, job role ini jadi kepala tim tanpa atasan.</span>
+              <span><b className="font-semibold">Bisa jadi atasan</b><br />Karyawan dengan job role ini bisa membawahi Marketing dan tidak bisa daftar sendiri lewat HP. Di Marketing, job role ini jadi kepala tim tanpa atasan.</span>
             </label>
             <div>
               <label className="text-sm font-medium text-slate-700">Allowance per bulan</label>
               <InputRupiah value={formJabatan.allowance} onChange={v => setFormJabatan({ ...formJabatan, allowance: v })} className="mt-1" />
-              <p className="text-xs text-slate-500 mt-1">Nominal default semua karyawan dengan job role ini. Bisa diganti per karyawan di halaman Karyawan.</p>
+              <p className="text-xs text-slate-500 mt-1">
+                {formJabatan.id_departemen && !departemen.find(d => d.id === formJabatan.id_departemen)?.allowance_flat
+                  ? 'Departemen ini allowance-nya diisi manual tiap bulan, jadi nominal ini tidak dipakai.'
+                  : 'Nominal default semua karyawan dengan job role ini. Bisa diganti per karyawan di halaman Karyawan.'}
+              </p>
             </div>
             <label className="flex items-start gap-2.5 p-3 rounded-lg border border-slate-200 text-sm cursor-pointer">
               <input type="checkbox" className="mt-0.5" checked={formJabatan.pakai_shift}

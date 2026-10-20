@@ -51,7 +51,7 @@ export default function LoginPage() {
   const kelasInput = 'w-full px-4 py-3 rounded-xl bg-white/70 border border-white text-slate-900 placeholder-slate-400 shadow-[inset_2px_2px_5px_rgba(15,23,42,0.06)] outline-none focus:bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-500/15 transition';
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-slate-100">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 latar-admin">
       <div className="relative w-full max-w-4xl grid md:grid-cols-2 rounded-[28px] overflow-hidden shadow-2xl shadow-slate-900/15 border border-white bg-[#eef1f6]">
         {/* Latar kaca: warna menyebar ke kedua sisi */}
         <div className="absolute -top-24 -left-16 w-80 h-80 rounded-full bg-blue-500/30 blur-3xl pointer-events-none" />
