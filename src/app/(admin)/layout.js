@@ -54,7 +54,7 @@ export default function AdminLayout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col latar-admin">
-      <nav className="flex flex-col lg:flex-row items-center justify-between px-6 py-4 border-b border-slate-200/80 bg-white/85 backdrop-blur shadow-sm gap-4 print:hidden">
+      <nav className="flex flex-col lg:flex-row items-center justify-between px-6 py-4 relative z-40 border-b border-slate-200/80 bg-white/90 shadow-sm gap-4 print:hidden">
 
         <div className="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
             <div className="flex items-center gap-3">

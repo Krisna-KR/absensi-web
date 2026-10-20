@@ -6,7 +6,7 @@ import { FileText, ChevronDown, Network, Wallet, Check } from 'lucide-react';
 
 const ITEM = [
   { href: '/rekap', label: 'Struktur karyawan', pendek: 'Struktur', sub: 'Susunan Backoffice & tim Marketing', icon: Network },
-  { href: '/rekap/allowance', label: 'Allowance', pendek: 'Allowance', sub: 'Potongan, komisi, approve & slip', icon: Wallet },
+  { href: '/rekap/allowance', label: 'Allowance', pendek: 'Allowance', sub: 'Isi allowance, kirim ke HP & slip', icon: Wallet },
 ];
 
 // Tab "Rekap" di navbar dengan dropdown. Menu memakai posisi fixed supaya tidak terpotong
