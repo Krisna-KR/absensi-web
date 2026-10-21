@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { LogIn, LogOut, Search, ChevronLeft, ChevronRight, MapPin, Users, CalendarOff, Crown, AlertTriangle } from 'lucide-react';
 import { tanggalWIB, geserTanggal, formatJam, formatTanggalPanjang, formatTanggal } from '@/utils/waktu';
-import { ambilKehadiran, STATUS_KEHADIRAN, kelompokPerTim, TANPA_ATASAN } from '@/utils/kehadiran';
+import { ambilKehadiran, ambilAwalData, STATUS_KEHADIRAN, kelompokPerTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import InfoKaryawan from '@/components/InfoKaryawan';
 
@@ -87,6 +87,9 @@ export default function KehadiranPage() {
   const [lokasi, setLokasi] = useState('semua');
   const [tim, setTim] = useState('semua');
   const [idInfo, setIdInfo] = useState(null);
+  // Tanggal absen pertama di aplikasi: hari kerja sebelum itu ditampilkan "belum ada data", bukan libur
+  const [awalData, setAwalData] = useState(null);
+  useEffect(() => { let batal = false; ambilAwalData().then(t => { if (!batal) setAwalData(t); }); return () => { batal = true; }; }, []);
 
   useEffect(() => {
     let batal = false;
@@ -205,8 +208,17 @@ export default function KehadiranPage() {
       ) : semuaLibur && filterStatus === 'semua' ? (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
           <CalendarOff className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-          <p className="font-semibold text-slate-700">{formatTanggalPanjang(tanggal)} hari libur</p>
-          <p className="text-sm">{data[0]?.keterangan === 'Akhir pekan' ? 'Akhir pekan.' : 'Kurang dari 3 orang absen, dihitung libur.'}</p>
+          {data[0]?.keterangan !== 'Akhir pekan' && (!awalData || tanggal < awalData) ? (
+            <>
+              <p className="font-semibold text-slate-700">Belum ada data absensi di {formatTanggalPanjang(tanggal)}</p>
+              <p className="text-sm">{awalData ? `Data di aplikasi mulai ${formatTanggalPanjang(awalData)}.` : 'Belum ada absen tercatat di aplikasi.'}</p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold text-slate-700">{formatTanggalPanjang(tanggal)} hari libur</p>
+              <p className="text-sm">{data[0]?.keterangan === 'Akhir pekan' ? 'Akhir pekan.' : 'Kurang dari 3 orang absen, dihitung libur.'}</p>
+            </>
+          )}
         </div>
       ) : kelompok.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-sm text-slate-500">

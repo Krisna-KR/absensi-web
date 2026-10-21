@@ -41,6 +41,16 @@ export function ambilJabatanKepala() {
 
 export const TANPA_ATASAN = 'Marketing tanpa atasan';
 
+// Tanggal absen pertama yang tercatat di aplikasi. Hari kerja sebelum tanggal ini = "belum ada data", bukan libur.
+let cacheAwal = null;
+export function ambilAwalData() {
+  if (!cacheAwal) {
+    cacheAwal = supabase.from('absensi').select('tanggal').order('tanggal', { ascending: true }).limit(1).maybeSingle()
+      .then(({ data, error }) => { if (error) { cacheAwal = null; return null; } return data?.tanggal ? String(data.tanggal).slice(0, 10) : null; });
+  }
+  return cacheAwal;
+}
+
 /** Tambahkan nama_tim & kepala_tim ke baris fn_kehadiran. Marketing tanpa atasan (dan bukan kepala tim) dikelompokkan sendiri. */
 export function tandaiTim(rows, kepala) {
   return rows.map(r => {

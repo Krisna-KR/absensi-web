@@ -95,6 +95,7 @@ export function labelRentang(mulai, sampai) {
   const [y1, m1, d1] = mulai.split('-').map(Number);
   const [y2, m2, d2] = sampai.split('-').map(Number);
   if (mulai === sampai) return `${d1} ${BULAN[m1 - 1]} ${y1}`;
+  if (y1 === y2 && m1 === m2) return `${d1}–${d2} ${BULAN[m1 - 1]} ${y1}`;
   return `${d1} ${BULAN[m1 - 1]}${y1 !== y2 ? ` ${y1}` : ''} – ${d2} ${BULAN[m2 - 1]} ${y2}`;
 }
 
@@ -104,4 +105,26 @@ export function formatTanggalPanjang(ymd) {
   const NAMA = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
   const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
   return `${d} ${NAMA[m - 1]} ${y}`;
+}
+
+/** Hari kerja (Senin-Jumat) berikutnya setelah 'YYYY-MM-DD' */
+function hariKerjaBerikut(ymd) {
+  let t = geserTanggal(ymd, 1);
+  for (let dw = new Date(`${t}T00:00:00Z`).getUTCDay(); dw === 0 || dw === 6; dw = new Date(`${t}T00:00:00Z`).getUTCDay()) t = geserTanggal(t, 1);
+  return t;
+}
+
+/**
+ * Ringkas daftar tanggal hari kerja jadi rentang. Tanggal yang hanya dipisah Sabtu/Minggu dianggap bersambung.
+ * ['2026-09-21','2026-09-22',...,'2026-10-09'] -> [{ mulai: '2026-09-21', sampai: '2026-10-09', hari: 15 }]
+ */
+export function ringkasRentang(daftar) {
+  const urut = [...new Set(daftar)].sort();
+  const hasil = [];
+  for (const t of urut) {
+    const akhir = hasil[hasil.length - 1];
+    if (akhir && hariKerjaBerikut(akhir.sampai) === t) { akhir.sampai = t; akhir.hari++; }
+    else hasil.push({ mulai: t, sampai: t, hari: 1 });
+  }
+  return hasil;
 }

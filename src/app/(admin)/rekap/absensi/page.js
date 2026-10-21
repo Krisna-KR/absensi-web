@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, FileSpreadsheet, ChevronDown, CalendarRange, Loader2, Info } from 'lucide-react';
-import { tanggalWIB, jamMenitWIB, periodeAbsensi, labelRentang, formatJam, formatTanggal, formatTanggalPanjang, rentangPeriode } from '@/utils/waktu';
-import { ambilKehadiran, STATUS_KEHADIRAN, namaTim, kelompokPerTim, bandingTim } from '@/utils/kehadiran';
+import { tanggalWIB, jamMenitWIB, periodeAbsensi, labelRentang, formatJam, formatTanggal, formatTanggalPanjang, rentangPeriode, ringkasRentang } from '@/utils/waktu';
+import { ambilKehadiran, ambilAwalData, STATUS_KEHADIRAN, namaTim, kelompokPerTim, bandingTim } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { buatXlsx, unduhBlob } from '@/utils/xlsx';
 import { useFeedback } from '@/components/Feedback';
@@ -33,6 +33,15 @@ function hitung(rows, hariIni) {
     if (r.waktu_masuk && !r.waktu_keluar && r.tanggal < hariIni) c.tanpaPulang++;
   }
   return c;
+}
+
+// Satu rentang tanggal: '21 Sep – 9 Okt 2026 · 15 hari kerja' atau 'Sel, 13 Okt 2026'
+function ChipRentang({ r, cls }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${cls}`}>
+      {r.mulai === r.sampai ? formatTanggal(r.mulai) : `${labelRentang(r.mulai, r.sampai)} · ${r.hari} hari kerja`}
+    </span>
+  );
 }
 
 /** Rekap absensi per periode (default 21–20), tab per divisi/tim, tabel per hari, export Excel. */
@@ -85,6 +94,15 @@ export default function RekapAbsensiPage() {
     }
     return [...per.entries()].filter(([, libur]) => libur).map(([t]) => t).sort();
   }, [mentah]);
+
+  // Tanggal absen pertama di aplikasi: hari kerja sebelum itu = belum ada data (bukan libur)
+  const [awalData, setAwalData] = useState(undefined);
+  useEffect(() => { let batal = false; ambilAwalData().then(t => { if (!batal) setAwalData(t); }); return () => { batal = true; }; }, []);
+  const infoLibur = useMemo(() => {
+    const belum = hariLibur.filter(t => !awalData || t < awalData);
+    const libur = hariLibur.filter(t => awalData && t >= awalData);
+    return { belum: ringkasRentang(belum), libur: ringkasRentang(libur) };
+  }, [hariLibur, awalData]);
 
   // Baris yang dihitung: tanpa baris Libur; Sabtu/Minggu hanya kalau dicentang
   const dasar = useMemo(() => mentah.filter(r => r.status !== 'Libur' && (weekend || !akhirPekan(r.tanggal))), [mentah, weekend]);
@@ -241,13 +259,28 @@ export default function RekapAbsensiPage() {
           {!valid && <p className="text-sm text-rose-600">Tanggal &ldquo;dari&rdquo; harus sebelum atau sama dengan &ldquo;sampai&rdquo;.</p>}
         </div>
 
-        {!loading && valid && (
-          <p className="text-sm px-3 py-2 rounded-lg bg-blue-50 border border-blue-100 text-blue-800 flex gap-2">
+        {!loading && valid && awalData !== undefined && (
+          <div className="text-sm px-3 py-2.5 rounded-lg bg-blue-50 border border-blue-100 text-blue-800 flex gap-2">
             <Info className="w-4 h-4 shrink-0 mt-0.5" />
-            <span><b className="font-semibold">Hari libur pada periode ini:</b> {hariLibur.length
-              ? hariLibur.map(t => formatTanggal(t)).join(', ') + ' (kurang dari 3 orang absen).'
-              : 'tidak ada selain Sabtu/Minggu.'}</span>
-          </p>
+            <div className="space-y-1.5 min-w-0">
+              {infoLibur.belum.length > 0 && (
+                <p className="flex flex-wrap items-center gap-1.5">
+                  <b className="font-semibold">Belum ada data absensi:</b>
+                  {infoLibur.belum.map(r => <ChipRentang key={r.mulai} r={r} cls="bg-slate-100 text-slate-600 border-slate-200" />)}
+                  <span className="text-xs text-blue-700/80">{awalData ? `Data di aplikasi mulai ${formatTanggalPanjang(awalData)}.` : 'Belum ada absen tercatat di aplikasi.'}</span>
+                </p>
+              )}
+              <p className="flex flex-wrap items-center gap-1.5">
+                <b className="font-semibold">Hari libur:</b>
+                {infoLibur.libur.length ? (
+                  <>
+                    {infoLibur.libur.map(r => <ChipRentang key={r.mulai} r={r} cls="bg-white text-blue-800 border-blue-200" />)}
+                    <span className="text-xs text-blue-700/80">kurang dari 3 orang absen</span>
+                  </>
+                ) : <span>tidak ada selain Sabtu/Minggu.</span>}
+              </p>
+            </div>
+          </div>
         )}
       </div>
 
