@@ -6,12 +6,21 @@ import { pesanError } from '@/utils/pesanError';
 import { formatHariKerja, bandingTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { useFeedback } from '@/components/Feedback';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
 
 const SEMINGGU = 5; // hari kerja
 
 const formatWaktu = (t) => t
   ? new Date(t).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' }).replace(/\./g, ':')
   : null;
+// Kunci urut per kolom. Belum pernah absen = paling lama (0), jadi ikut di atas saat urut naik.
+const AKSES_URUT = {
+  nama: r => r.nama_lengkap,
+  divisi: r => labelTim(r),
+  jabatan: r => r.jabatan,
+  terakhir: r => (r.terakhir_absen ? new Date(r.terakhir_absen).getTime() : 0),
+  hari: r => r.hari_kerja,
+};
 const labelTim = (r) => (r.nama_departemen === 'Marketing' ? (r.nama_tim ? `Tim ${r.nama_tim}` : TANPA_ATASAN) : r.nama_departemen || 'Tanpa departemen');
 
 /**
@@ -31,6 +40,8 @@ export default function TidakMasuk() {
   const [cari, setCari] = useState('');
   const [idInfo, setIdInfo] = useState(null);
   const [sibuk, setSibuk] = useState(null);   // id yang sedang dinonaktifkan
+  // Default sama dengan urutan dari database: absen terakhir paling lama di atas
+  const [urut, gantiUrut] = useUrutan({ kunci: 'terakhir', arah: 'asc' });
 
   useEffect(() => {
     let batal = false;
@@ -59,6 +70,7 @@ export default function TidakMasuk() {
       && (tim === 'semua' || labelTim(r) === tim)
       && (!q || r.nama_lengkap?.toLowerCase().includes(q) || r.nip?.toLowerCase().includes(q)));
   }, [rows, lokasi, tim, cari]);
+  const terurut = useMemo(() => urutkan(tampil, urut, AKSES_URUT), [tampil, urut]);
 
   const lebihSeminggu = tampil.filter(r => r.hari_kerja >= SEMINGGU).length;
   const belumPernah = tampil.filter(r => !r.terakhir_absen).length;
@@ -138,16 +150,16 @@ export default function TidakMasuk() {
               <thead className="bg-slate-50 text-slate-500 text-xs">
                 <tr>
                   <th className="pl-5 pr-2 py-2.5 font-semibold w-10">No</th>
-                  <th className="px-3 py-2.5 font-semibold">Karyawan</th>
-                  <th className="px-3 py-2.5 font-semibold">Divisi</th>
-                  <th className="px-3 py-2.5 font-semibold">Jabatan</th>
-                  <th className="px-3 py-2.5 font-semibold">Terakhir absen</th>
-                  <th className="px-3 py-2.5 font-semibold">Tidak masuk (hari kerja)</th>
+                  <KolomUrut kunci="nama" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Karyawan</KolomUrut>
+                  <KolomUrut kunci="divisi" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Divisi</KolomUrut>
+                  <KolomUrut kunci="jabatan" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Jabatan</KolomUrut>
+                  <KolomUrut kunci="terakhir" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Terakhir absen</KolomUrut>
+                  <KolomUrut kunci="hari" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Tidak masuk (hari kerja)</KolomUrut>
                   <th className="px-5 py-2.5 font-semibold text-right">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {tampil.map((r, i) => (
+                {terurut.map((r, i) => (
                   <tr key={r.id_karyawan} className="hover:bg-slate-50/70">
                     <td className="pl-5 pr-2 py-2.5 text-slate-400 tabular-nums">{i + 1}</td>
                     <td className="px-3 py-2.5">

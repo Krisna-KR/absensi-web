@@ -27,11 +27,11 @@ export function urutkan(rows, urut, akses) {
 }
 
 /** Header kolom yang bisa diklik untuk mengurutkan. */
-export function KolomUrut({ kunci, urut, onUrut, children, className = '', rata = 'kiri' }) {
+export function KolomUrut({ kunci, urut, onUrut, children, className = '', rata = 'kiri', pad = 'px-6 py-3' }) {
   const aktif = urut.kunci === kunci;
   const Icon = !aktif ? ArrowUpDown : urut.arah === 'asc' ? ArrowUp : ArrowDown;
   return (
-    <th className={`px-6 py-3 font-semibold ${className}`} aria-sort={aktif ? (urut.arah === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <th className={`${pad} font-semibold ${className}`} aria-sort={aktif ? (urut.arah === 'asc' ? 'ascending' : 'descending') : 'none'}>
       <button type="button" onClick={() => onUrut(kunci)}
         className={`inline-flex items-center gap-1.5 rounded px-1 -mx-1 py-0.5 hover:text-slate-900 hover:bg-slate-100 transition-colors ${rata === 'kanan' ? 'flex-row-reverse' : ''} ${aktif ? 'text-slate-900' : ''}`}>
         {children}
