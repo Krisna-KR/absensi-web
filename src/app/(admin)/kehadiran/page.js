@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { LogIn, LogOut, Search, ChevronLeft, ChevronRight, MapPin, Users, CalendarOff } from 'lucide-react';
+import { LogIn, LogOut, Search, ChevronLeft, ChevronRight, MapPin, Users, CalendarOff, Crown, AlertTriangle } from 'lucide-react';
 import { tanggalWIB, geserTanggal, formatJam, formatTanggalPanjang, formatTanggal } from '@/utils/waktu';
-import { ambilKehadiran, STATUS_KEHADIRAN, kelompokPerTim } from '@/utils/kehadiran';
+import { ambilKehadiran, STATUS_KEHADIRAN, kelompokPerTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import InfoKaryawan from '@/components/InfoKaryawan';
 
@@ -18,23 +18,65 @@ const FILTER_STATUS = [
 ];
 
 const IZIN = ['Izin', 'Sakit', 'Cuti'];
+const sudahMasuk = r => !!(r.waktu_masuk || r.waktu_keluar);
 
 function Ringkas({ rows }) {
-  const masuk = rows.filter(r => r.waktu_masuk || r.waktu_keluar).length;
+  const masuk = rows.filter(sudahMasuk).length;
   const telat = rows.filter(r => r.status === 'Late').length;
   const izin = rows.filter(r => IZIN.includes(r.status)).length;
   const tidak = rows.filter(r => r.status === 'Bolos' || r.status === 'Belum Absen').length;
   return (
-    <span className="flex flex-wrap gap-1 text-[11px] font-bold">
-      <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700">Masuk {masuk}</span>
-      {telat > 0 && <span className="px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700">Telat {telat}</span>}
-      {izin > 0 && <span className="px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-700">Izin {izin}</span>}
-      {tidak > 0 && <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700">Belum/Tidak masuk {tidak}</span>}
+    <span className="flex flex-wrap justify-end gap-1 text-[11px] font-bold">
+      <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 tabular-nums">Masuk {masuk}</span>
+      {telat > 0 && <span className="px-1.5 py-0.5 rounded-md bg-orange-50 text-orange-700 tabular-nums">Telat {telat}</span>}
+      {izin > 0 && <span className="px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-700 tabular-nums">Izin {izin}</span>}
+      {tidak > 0 && <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-700 tabular-nums">Belum {tidak}</span>}
     </span>
   );
 }
 
-/** Kehadiran per hari, dikelompokkan per tim: divisi A-Z, lalu nama tim A-Z. */
+// Satu baris karyawan. `beku` = baris kepala tim yang menempel di atas saat isi kartu di-scroll.
+function Baris({ r, beku, onInfo, tampilLokasi }) {
+  const st = STATUS_KEHADIRAN[r.status] || { label: r.status, cls: 'bg-slate-50 text-slate-600 border-slate-200' };
+  const td = `py-2 border-b ${beku ? 'bg-emerald-50 border-emerald-200 font-normal normal-case tracking-normal text-sm text-slate-600' : 'border-slate-100'}`;
+  return (
+    <tr className={beku ? '' : 'hover:bg-slate-50/70'}>
+      <td className={`${td} pl-4 pr-2`}>
+        <button type="button" onClick={() => onInfo(r.id_karyawan)} className="font-semibold text-slate-900 hover:text-blue-700 hover:underline underline-offset-2 text-left inline-flex items-center gap-1">
+          {beku && <Crown className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}{r.nama_lengkap}
+        </button>
+        <p className="text-[11px] text-slate-500">
+          {r.jabatan || '–'}{beku && <span className="ml-1 font-semibold text-emerald-700">· kepala tim</span>}
+          {tampilLokasi && r.nama_lokasi && <span className="inline-flex items-center gap-0.5 ml-1.5"><MapPin className="w-3 h-3" />{r.nama_lokasi}</span>}
+        </p>
+      </td>
+      <td className={`${td} px-2`}>
+        <span className={`px-2 py-0.5 rounded-md border text-xs font-semibold whitespace-nowrap ${st.cls}`}>{st.label}</span>
+        {r.status === 'Late' && r.durasi_telat_menit > 0 && <span className="ml-1 text-[11px] text-orange-600 tabular-nums">+{r.durasi_telat_menit}m</span>}
+        {r.keterangan && <p className="text-[11px] text-slate-500 truncate max-w-[160px] mt-0.5" title={r.keterangan}>{r.keterangan}</p>}
+      </td>
+      <td className={`${td} px-2 text-center`}>
+        {r.waktu_masuk ? (
+          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-xs font-semibold tabular-nums ${r.status === 'Late' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+            <LogIn className="w-3.5 h-3.5" />{formatJam(r.waktu_masuk)}
+          </span>
+        ) : <span className="text-slate-300">–</span>}
+      </td>
+      <td className={`${td} pl-2 pr-4 text-center`}>
+        {r.waktu_keluar ? (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-slate-800 text-white text-xs font-semibold tabular-nums">
+            <LogOut className="w-3.5 h-3.5" />{formatJam(r.waktu_keluar)}
+          </span>
+        ) : <span className="text-slate-300">–</span>}
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * Kehadiran per hari, satu kartu per tim (divisi A-Z, lalu nama tim A-Z).
+ * Semua kartu tingginya sama; isinya di-scroll di dalam kartu, kepala tim menempel di atas.
+ */
 export default function KehadiranPage() {
   const hariIni = tanggalWIB();
   const [tanggal, setTanggal] = useState(hariIni);
@@ -43,6 +85,7 @@ export default function KehadiranPage() {
   const [filterStatus, setFilterStatus] = useState('semua');
   const [cari, setCari] = useState('');
   const [lokasi, setLokasi] = useState('semua');
+  const [tim, setTim] = useState('semua');
   const [idInfo, setIdInfo] = useState(null);
 
   useEffect(() => {
@@ -62,20 +105,31 @@ export default function KehadiranPage() {
   const data = useMemo(() => (loading ? [] : hasil.rows), [hasil, loading]);
 
   const opsiLokasi = useMemo(() => [...new Set(data.map(r => r.nama_lokasi).filter(Boolean))].sort(), [data]);
+  // Dasar: lokasi + pencarian (tanpa filter status & tim) -> dipakai untuk angka di chip tim
   const dasar = useMemo(() => {
     const q = cari.trim().toLowerCase();
-    return data.filter(r => (lokasi === 'semua' || r.nama_lokasi === lokasi)
+    return data.filter(r => FILTER_STATUS[0].cocok(r) && (lokasi === 'semua' || r.nama_lokasi === lokasi)
       && (!q || r.nama_lengkap?.toLowerCase().includes(q) || r.nip?.toLowerCase().includes(q)));
   }, [data, cari, lokasi]);
 
-  const jumlah = useMemo(() => Object.fromEntries(FILTER_STATUS.map(f => [f.key, dasar.filter(f.cocok).length])), [dasar]);
+  const semuaTim = useMemo(() => kelompokPerTim(dasar), [dasar]);
+  const timAktif = semuaTim.some(g => g.key === tim) ? tim : 'semua';
+  const diTim = useMemo(() => (timAktif === 'semua' ? dasar : semuaTim.find(g => g.key === timAktif).rows), [dasar, semuaTim, timAktif]);
+
+  const jumlah = useMemo(() => Object.fromEntries(FILTER_STATUS.map(f => [f.key, diTim.filter(f.cocok).length])), [diTim]);
   const kelompok = useMemo(() => {
     const f = FILTER_STATUS.find(x => x.key === filterStatus) || FILTER_STATUS[0];
-    return kelompokPerTim(dasar.filter(f.cocok).sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap, 'id')));
-  }, [dasar, filterStatus]);
+    return kelompokPerTim(diTim.filter(f.cocok)).map(g => {
+      const urut = [...g.rows].sort((a, b) => a.nama_lengkap.localeCompare(b.nama_lengkap, 'id'));
+      const kepala = urut.find(r => r.kepala_tim) || null;
+      return { ...g, kepala, anggota: urut.filter(r => r !== kepala) };
+    });
+  }, [diTim, filterStatus]);
 
   const semuaLibur = !loading && data.length > 0 && data.every(r => r.status === 'Libur' && !r.id_absensi);
   const pindah = (t) => { if (t && t <= hariIni) setTanggal(t); };
+  const satuTim = timAktif !== 'semua';
+  const tampilLokasi = lokasi === 'semua' && opsiLokasi.length > 1;
 
   return (
     <div className="space-y-4">
@@ -83,7 +137,7 @@ export default function KehadiranPage() {
         <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Kehadiran harian</h1>
-            <p className="text-sm text-slate-500">{formatTanggal(tanggal)}{tanggal === hariIni ? ' · hari ini' : ''}. Per tim: Backoffice dulu, lalu tim Marketing A–Z.</p>
+            <p className="text-sm text-slate-500">{formatTanggal(tanggal)}{tanggal === hariIni ? ' · hari ini' : ''}. Klik nama untuk info & rekap karyawan.</p>
           </div>
           <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
             <label className="relative">
@@ -108,14 +162,30 @@ export default function KehadiranPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter status">
+        {/* Chip tim: angka = sudah masuk / jumlah orang */}
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide sm:flex-wrap" role="tablist" aria-label="Divisi / tim">
+          {[{ key: 'semua', nama: 'Semua tim', rows: dasar }, ...semuaTim].map(g => {
+            const aktif = timAktif === g.key;
+            const titik = g.key === 'semua' ? null : g.nama === TANPA_ATASAN ? 'bg-rose-500' : g.divisi === 'Marketing' ? 'bg-emerald-500' : 'bg-blue-500';
+            return (
+              <button key={g.key} role="tab" aria-selected={aktif} onClick={() => setTim(g.key)}
+                className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border font-semibold whitespace-nowrap transition-colors ${aktif ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                {titik && <span className={`w-2 h-2 rounded-full ${aktif ? 'bg-white' : titik}`} />}
+                {g.nama}
+                <span className={`text-xs tabular-nums ${aktif ? 'text-white/70' : 'text-slate-400'}`}>{loading ? '·' : `${g.rows.filter(sudahMasuk).length}/${g.rows.length}`}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex flex-wrap gap-2 pt-3 border-t border-slate-100" role="tablist" aria-label="Filter status">
           {FILTER_STATUS.map(f => {
             const aktif = filterStatus === f.key;
             return (
               <button key={f.key} role="tab" aria-selected={aktif} onClick={() => setFilterStatus(f.key)}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm border transition-colors ${aktif ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border font-semibold transition-colors ${aktif ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
                 {f.label}
-                <span className={`text-xs tabular-nums px-1.5 rounded-full ${aktif ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{loading ? '·' : jumlah[f.key]}</span>
+                <span className={`tabular-nums px-1.5 rounded-full ${aktif ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{loading ? '·' : jumlah[f.key]}</span>
               </button>
             );
           })}
@@ -125,10 +195,10 @@ export default function KehadiranPage() {
       {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Data kehadiran belum bisa dimuat. {galat}</div>}
 
       {loading ? (
-        <div className="grid xl:grid-cols-2 gap-4">
-          {[0, 1].map(i => (
-            <div key={i} className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-              {Array.from({ length: 5 }).map((_, j) => <div key={j} className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: `${60 + (j % 3) * 12}%` }} />)}
+        <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-4">
+          {[0, 1, 2].map(i => (
+            <div key={i} className="h-[26rem] bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+              {Array.from({ length: 6 }).map((_, j) => <div key={j} className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: `${60 + (j % 3) * 12}%` }} />)}
             </div>
           ))}
         </div>
@@ -143,70 +213,43 @@ export default function KehadiranPage() {
           {cari ? `Tidak ada karyawan yang cocok dengan "${cari}".` : 'Tidak ada data untuk filter ini.'}
         </div>
       ) : (
-        <div className="grid xl:grid-cols-2 gap-4 items-start">
-          {kelompok.map(g => (
-            <section key={g.key} className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${g.divisi === 'Marketing' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}><Users className="w-4 h-4" /></span>
-                  <div className="min-w-0">
-                    <h2 className="font-bold text-slate-900 truncate">{g.nama}</h2>
-                    <p className="text-[11px] text-slate-500">{g.divisi || 'Tanpa departemen'} · {g.rows.length} orang</p>
+        <div className={`grid gap-4 ${satuTim ? '' : 'lg:grid-cols-2 2xl:grid-cols-3'}`}>
+          {kelompok.map(g => {
+            const tanpaAtasan = g.nama === TANPA_ATASAN;
+            return (
+              <section key={g.key} className={`bg-white border rounded-xl shadow-sm overflow-hidden flex flex-col ${satuTim ? 'h-[calc(100dvh-20rem)] min-h-[26rem]' : 'h-[26rem]'} ${tanpaAtasan ? 'border-rose-200' : 'border-slate-200'}`}>
+                <div className={`shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b ${tanpaAtasan ? 'bg-rose-50/70 border-rose-100' : 'bg-slate-50/60 border-slate-100'}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${tanpaAtasan ? 'bg-rose-100 text-rose-600' : g.divisi === 'Marketing' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-600'}`}>
+                      {tanpaAtasan ? <AlertTriangle className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="font-bold text-slate-900 truncate">{g.nama}</h2>
+                      <p className="text-[11px] text-slate-500">{tanpaAtasan ? 'Pilih atasan di halaman Karyawan' : `${g.divisi || 'Tanpa departemen'} · ${g.rows.length} orang`}</p>
+                    </div>
                   </div>
+                  <Ringkas rows={g.rows} />
                 </div>
-                <Ringkas rows={g.rows} />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap">
-                  <thead className="text-slate-400 text-[11px] uppercase tracking-wider">
-                    <tr>
-                      <th className="px-5 py-2 font-semibold">Nama</th>
-                      <th className="px-3 py-2 font-semibold">Status</th>
-                      <th className="px-3 py-2 font-semibold text-center">Masuk</th>
-                      <th className="px-3 py-2 font-semibold text-center">Pulang</th>
-                      <th className="px-5 py-2 font-semibold">Keterangan</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {g.rows.map(r => {
-                      const st = STATUS_KEHADIRAN[r.status] || { label: r.status, cls: 'bg-slate-50 text-slate-600 border-slate-200' };
-                      const kepala = r.nama_departemen === 'Marketing' && !r.id_atasan;
-                      return (
-                        <tr key={r.id_karyawan} className="hover:bg-slate-50/70">
-                          <td className="px-5 py-2.5">
-                            <button type="button" onClick={() => setIdInfo(r.id_karyawan)} className="font-semibold text-slate-900 hover:text-blue-700 hover:underline underline-offset-2 text-left">{r.nama_lengkap}</button>
-                            <p className="text-[11px] text-slate-500">
-                              {r.jabatan || '–'}{kepala && <span className="ml-1 font-semibold text-emerald-700">· kepala tim</span>}
-                              {lokasi === 'semua' && opsiLokasi.length > 1 && r.nama_lokasi && <span className="inline-flex items-center gap-0.5 ml-1.5"><MapPin className="w-3 h-3" />{r.nama_lokasi}</span>}
-                            </p>
-                          </td>
-                          <td className="px-3 py-2.5">
-                            <span className={`px-2 py-0.5 rounded-md border text-xs font-semibold ${st.cls}`}>{st.label}</span>
-                            {r.status === 'Late' && r.durasi_telat_menit > 0 && <span className="ml-1.5 text-[11px] text-orange-600 tabular-nums">+{r.durasi_telat_menit} mnt</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            {r.waktu_masuk ? (
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-semibold tabular-nums ${r.status === 'Late' ? 'bg-orange-50 text-orange-700 border-orange-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
-                                <LogIn className="w-3.5 h-3.5" />{formatJam(r.waktu_masuk)}
-                              </span>
-                            ) : <span className="text-slate-300">–</span>}
-                          </td>
-                          <td className="px-3 py-2.5 text-center">
-                            {r.waktu_keluar ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-800 text-white text-xs font-semibold tabular-nums">
-                                <LogOut className="w-3.5 h-3.5" />{formatJam(r.waktu_keluar)}
-                              </span>
-                            ) : <span className="text-slate-300">–</span>}
-                          </td>
-                          <td className="px-5 py-2.5 text-xs text-slate-500 max-w-[200px] truncate" title={r.keterangan || ''}>{r.keterangan || '–'}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ))}
+                <div className="flex-1 overflow-y-auto overscroll-contain">
+                  <table className="w-full text-left text-sm text-slate-600 border-separate border-spacing-0">
+                    {/* Judul kolom + baris kepala tim ada di thead yang menempel, jadi ikut diam saat isi di-scroll */}
+                    <thead className="sticky top-0 z-20 bg-white text-slate-400 text-[11px] uppercase tracking-wider shadow-[0_2px_4px_-2px_rgba(0,0,0,0.12)]">
+                      <tr>
+                        <th className="h-8 pl-4 pr-2 font-semibold border-b border-slate-100">Nama</th>
+                        <th className="h-8 px-2 font-semibold border-b border-slate-100">Status</th>
+                        <th className="h-8 px-2 font-semibold border-b border-slate-100 text-center">Masuk</th>
+                        <th className="h-8 pl-2 pr-4 font-semibold border-b border-slate-100 text-center">Pulang</th>
+                      </tr>
+                      {g.kepala && <Baris r={g.kepala} beku onInfo={setIdInfo} tampilLokasi={tampilLokasi} />}
+                    </thead>
+                    <tbody>
+                      {g.anggota.map(r => <Baris key={r.id_karyawan} r={r} onInfo={setIdInfo} tampilLokasi={tampilLokasi} />)}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
 

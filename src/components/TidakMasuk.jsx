@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { UserX, CheckCircle2, MapPin, Search, RefreshCw, Trash2, Loader2 } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
-import { formatHariKerja, bandingTim } from '@/utils/kehadiran';
+import { formatHariKerja, bandingTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { useFeedback } from '@/components/Feedback';
 import InfoKaryawan from '@/components/InfoKaryawan';
 
@@ -12,7 +12,7 @@ const SEMINGGU = 5; // hari kerja
 const formatWaktu = (t) => t
   ? new Date(t).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jakarta' }).replace(/\./g, ':')
   : null;
-const labelTim = (r) => (r.nama_departemen === 'Marketing' ? `Tim ${r.nama_tim}` : r.nama_departemen || 'Tanpa departemen');
+const labelTim = (r) => (r.nama_departemen === 'Marketing' ? (r.nama_tim ? `Tim ${r.nama_tim}` : TANPA_ATASAN) : r.nama_departemen || 'Tanpa departemen');
 
 /**
  * Daftar karyawan (BO & Marketing) yang tidak masuk, minimal 1 hari kerja, urut dari absen terakhir paling lama.
@@ -155,7 +155,7 @@ export default function TidakMasuk() {
                       <p className="text-xs text-slate-400"><span className="font-mono">{r.nip}</span>{r.nama_lokasi && <span className="inline-flex items-center gap-0.5 ml-1.5"><MapPin className="w-3 h-3" />{r.nama_lokasi}</span>}</p>
                     </td>
                     <td className="px-3 py-2.5">
-                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-md border ${r.nama_departemen === 'Marketing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{labelTim(r)}</span>
+                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-md border ${labelTim(r) === TANPA_ATASAN ? 'bg-rose-50 text-rose-700 border-rose-200' : r.nama_departemen === 'Marketing' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>{labelTim(r)}</span>
                     </td>
                     <td className="px-3 py-2.5 text-slate-700">{r.jabatan || '–'}</td>
                     <td className="px-3 py-2.5 text-slate-700 tabular-nums">{formatWaktu(r.terakhir_absen) || <span className="text-amber-700 font-semibold">Belum pernah absen</span>}</td>

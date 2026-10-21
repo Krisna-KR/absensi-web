@@ -26,7 +26,35 @@ export const JABATAN_BACKOFFICE = ['Business Manager', 'IT', 'Admin'];
  * Ambil rekap kehadiran per karyawan per hari dari fn_kehadiran.
  * Dipaginasi per 1000 baris (batas default API Supabase).
  */
+// Job role "bisa jadi atasan" (Business Manager, dst.). Disimpan sebentar supaya tidak diambil berulang.
+let cacheKepala = null;
+export function ambilJabatanKepala() {
+  if (!cacheKepala || Date.now() - cacheKepala.waktu > 60000) {
+    const janji = supabase.from('master_jabatan').select('nama').eq('bisa_jadi_atasan', true).then(({ data, error }) => {
+      if (error) { cacheKepala = null; throw error; }
+      return new Set((data || []).map(j => j.nama));
+    });
+    cacheKepala = { waktu: Date.now(), janji };
+  }
+  return cacheKepala.janji;
+}
+
+export const TANPA_ATASAN = 'Marketing tanpa atasan';
+
+/** Tambahkan nama_tim & kepala_tim ke baris fn_kehadiran. Marketing tanpa atasan (dan bukan kepala tim) dikelompokkan sendiri. */
+export function tandaiTim(rows, kepala) {
+  return rows.map(r => {
+    // kepala null = daftar job role gagal dimuat: anggap Marketing tanpa atasan sebagai kepala tim (perilaku lama)
+    const kepalaTim = r.nama_departemen === 'Marketing' && !r.id_atasan && (!kepala || kepala.has(r.jabatan));
+    const nama_tim = r.nama_departemen !== 'Marketing' ? (r.nama_departemen || 'Tanpa departemen')
+      : r.nama_atasan ? `Tim ${r.nama_atasan}`
+      : kepalaTim ? `Tim ${r.nama_lengkap}` : TANPA_ATASAN;
+    return { ...r, nama_tim, kepala_tim: kepalaTim };
+  });
+}
+
 export async function ambilKehadiran({ mulai, sampai, idKaryawan = null }) {
+  const kepala = ambilJabatanKepala().catch(() => null);
   const hasil = [];
   const ukuran = 1000;
   for (let dari = 0; ; dari += ukuran) {
@@ -40,7 +68,7 @@ export async function ambilKehadiran({ mulai, sampai, idKaryawan = null }) {
     hasil.push(...(data || []));
     if (!data || data.length < ukuran) break;
   }
-  return hasil;
+  return tandaiTim(hasil, await kepala);
 }
 
 export function hitungStatus(rows) {
@@ -51,6 +79,7 @@ export function hitungStatus(rows) {
 
 /** Nama kelompok untuk tampilan per tim: Backoffice, atau "Tim <kepala tim>" untuk Marketing */
 export function namaTim(r) {
+  if (r.nama_tim) return r.nama_tim;
   if (r.nama_departemen === 'Marketing') return `Tim ${r.nama_atasan || r.nama_lengkap}`;
   return r.nama_departemen || 'Tanpa departemen';
 }
