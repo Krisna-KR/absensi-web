@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Printer, Users, Briefcase, Megaphone, MapPin, Crown } from 'lucide-react';
+import { Printer, Users, Briefcase, Megaphone, MapPin, Crown, Table2, Network } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { formatTanggal, tanggalWIB } from '@/utils/waktu';
+import BaganStruktur from '@/components/BaganStruktur';
 
 const LABEL_DIVISI = {
   Marketing: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -71,6 +72,7 @@ export default function RekapPage() {
   const [loading, setLoading] = useState(true);
   const [galat, setGalat] = useState('');
   const [filterLokasi, setFilterLokasi] = useState('semua');
+  const [tampilan, setTampilan] = useState('tabel');   // 'tabel' | 'bagan'
 
   useEffect(() => {
     let batal = false;
@@ -116,7 +118,7 @@ export default function RekapPage() {
     })).filter(t => t.anggota.length > 0 && (t.leader.divisi === 'Marketing' || t.anggota.some(a => !a.atasanTim)));
     const tanpaAtasan = marketing.filter(m => !atasanRole.has(m.jabatan) && !leader.some(l => l.id === m.id_atasan));
 
-    return { semua, tampil, backoffice, marketing, tim, tanpaAtasan };
+    return { semua, tampil, backoffice, marketing, tim, tanpaAtasan, atasanRole };
   }, [data, filterLokasi]);
 
   return (
@@ -127,6 +129,12 @@ export default function RekapPage() {
           <p className="hidden print:block text-sm text-slate-500">Per {formatTanggal(tanggalWIB())}{filterLokasi !== 'semua' ? ` · ${data.lokasi.find(l => l.id === filterLokasi)?.nama_cabang}` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm" role="tablist" aria-label="Tampilan">
+            {[['tabel', 'Tabel', Table2], ['bagan', 'Bagan', Network]].map(([v, l, Icon]) => (
+              <button key={v} role="tab" aria-selected={tampilan === v} onClick={() => setTampilan(v)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold ${tampilan === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Icon className="w-4 h-4" />{l}</button>
+            ))}
+          </div>
           <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm">
             {[{ id: 'semua', nama_cabang: 'Semua lokasi' }, ...data.lokasi].map(l => (
               <button key={l.id} onClick={() => setFilterLokasi(l.id)}
@@ -143,6 +151,8 @@ export default function RekapPage() {
 
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-white rounded-xl border border-slate-200 animate-pulse" />)}</div>
+      ) : tampilan === 'bagan' ? (
+        <BaganStruktur semua={laporan.semua} atasanRole={laporan.atasanRole} idLokasi={filterLokasi} />
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
