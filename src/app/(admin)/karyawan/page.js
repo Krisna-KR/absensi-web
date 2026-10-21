@@ -3,13 +3,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Plus, Search, X, Check, Trash2, KeyRound, Smartphone, Clock, Edit2, History, Users, ArrowRightLeft, TrendingUp, UserX, UserCheck, MapPin, PenLine, Wallet } from 'lucide-react';
 import { tanggalWIB, jamMenitWIB, formatTanggal, formatTanggalWaktu } from '@/utils/waktu';
-import { STATUS_KEHADIRAN } from '@/utils/kehadiran';
+import { STATUS_KEHADIRAN, bandingTim } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
 import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
 import InputRupiah from '@/components/InputRupiah';
 import PadTtd from '@/components/PadTtd';
 import { formatRupiah } from '@/utils/rupiah';
+import Modal from '@/components/Modal';
+import InfoKaryawan from '@/components/InfoKaryawan';
 
 const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', pakaiKhusus: false, allowance_khusus: null };
 // Kolom password tidak bisa dibaca lewat API, jadi kolom disebut satu per satu
@@ -28,6 +30,9 @@ const ALASAN_MANUAL = [
   'Dinas luar / training / event',
 ];
 const LAINNYA = 'Lainnya (tulis sendiri)';
+// Pilih "Appointment dengan client" -> jam masuk langsung diisi 09:00 (tetap bisa diubah). Karyawan shift tidak ikut.
+const ALASAN_APPOINTMENT = 'Appointment dengan client';
+const JAM_APPOINTMENT = '09:00';
 const JENIS_MANUAL = [
   { v: 'Hadir', l: 'Hadir (input jam masuk / pulang)' },
   { v: 'Izin', l: 'Izin (kepentingan pribadi)' },
@@ -99,31 +104,9 @@ function BagianTtd({ idKaryawan, nama }) {
   );
 }
 
-// Popup: di HP muncul dari bawah selebar layar (bottom sheet), di laptop di tengah layar.
-// Lebar desktop diatur lewat prop `lebar` (kelas sm:max-w-*).
-function Modal({ judul, onClose, children, lebar = 'sm:max-w-lg' }) {
-  useEffect(() => {
-    const awal = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';   // halaman di belakang tidak ikut ter-scroll
-    return () => { document.body.style.overflow = awal; };
-  }, []);
-  return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center sm:p-6">
-      <div role="dialog" aria-modal="true" aria-label={judul}
-        className={`bg-white w-full ${lebar} flex flex-col overflow-hidden border border-slate-200 shadow-xl rounded-t-2xl sm:rounded-2xl max-h-[94dvh] sm:max-h-[90vh]`}>
-        <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-white shrink-0">
-          <h2 className="text-lg font-bold text-slate-900 min-w-0 truncate">{judul}</h2>
-          <button type="button" onClick={onClose} aria-label="Tutup" className="p-1.5 -mr-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-50"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="overflow-y-auto overscroll-contain">{children}</div>
-      </div>
-    </div>
-  );
-}
-
 // Baris tombol di bawah popup: selalu terlihat walau isi form panjang
 const FooterModal = ({ children, className = 'justify-end' }) => (
-  <div className={`sticky bottom-0 z-10 -mx-5 sm:-mx-6 -mb-5 sm:-mb-6 mt-2 px-5 sm:px-6 py-4 bg-white border-t border-slate-100 flex flex-wrap items-center gap-3 ${className}`}>{children}</div>
+  <div className={`sticky bottom-0 z-10 -mx-5 sm:-mx-6 -mb-5 sm:-mb-6 mt-4 px-5 sm:px-6 py-3 bg-white border-t border-slate-100 flex flex-wrap items-center gap-3 ${className}`}>{children}</div>
 );
 
 export default function KaryawanPage() {
@@ -135,6 +118,7 @@ export default function KaryawanPage() {
   const [loading, setLoading] = useState(false);
   const { toast, konfirmasi, info } = useFeedback();
   const [cari, setCari] = useState('');
+  const [filterTim, setFilterTim] = useState('semua');   // chip divisi/tim
   const [urut, gantiUrut] = useUrutan({ kunci: 'nama', arah: 'asc' });
 
   // Modal Tambah/Edit Karyawan
@@ -151,6 +135,7 @@ export default function KaryawanPage() {
   // Modal Transfer Bawahan & Riwayat
   const [transfer, setTransfer] = useState(null); // { dari, ids, ke }
   const [riwayat, setRiwayat] = useState(null);   // { kar, rows }
+  const [idInfo, setIdInfo] = useState(null);     // popup info karyawan
 
   const [versi, setVersi] = useState(0);
   const fetchData = () => setVersi(v => v + 1); // muat ulang data
@@ -182,18 +167,44 @@ export default function KaryawanPage() {
   const jabatanDept = (dept) => jabatanList.filter(j => j.id_departemen === deptIdByName[dept]);
   const jumlahAktif = karyawan.filter(k => k.is_aktif).length;
   const jumlahNonaktif = karyawan.length - jumlahAktif;
+  // Kelompok divisi/tim tiap karyawan: Backoffice, "Tim <kepala tim>" untuk Marketing, atau Marketing tanpa atasan
+  const timKar = useMemo(() => {
+    const peta = {};
+    for (const k of karyawan) {
+      const dept = deptById[k.id_departemen] || null;
+      let nama = dept || 'Tanpa departemen';
+      if (dept === 'Marketing') {
+        const kepala = jabatanAtasan.has(k.jabatan) ? k : karById[k.id_atasan];
+        nama = kepala ? `Tim ${kepala.nama_lengkap}` : 'Marketing tanpa atasan';
+      }
+      peta[k.id] = { key: `${dept || ''}|${nama}`, nama, divisi: dept };
+    }
+    return peta;
+  }, [karyawan, deptById, karById, jabatanAtasan]);
+  // Chip filter divisi/tim (dengan jumlah orang) sesuai tab Aktif/Nonaktif
+  const opsiTim = useMemo(() => {
+    const peta = new Map();
+    for (const k of karyawan) {
+      if (lihatNonaktif ? k.is_aktif : !k.is_aktif) continue;
+      const t = timKar[k.id];
+      if (!peta.has(t.key)) peta.set(t.key, { ...t, n: 0 });
+      peta.get(t.key).n++;
+    }
+    return [...peta.values()].sort(bandingTim);
+  }, [karyawan, timKar, lihatNonaktif]);
+  const timAktif = opsiTim.some(t => t.key === filterTim) ? filterTim : 'semua';
   // Pencarian & urutan tabel
   const daftarTampil = useMemo(() => {
     const q = cari.trim().toLowerCase();
     const namaAtasan = (k) => karById[k.id_atasan]?.nama_lengkap || '';
-    const sesuaiStatus = karyawan.filter(k => (lihatNonaktif ? !k.is_aktif : k.is_aktif));
+    const sesuaiStatus = karyawan.filter(k => (lihatNonaktif ? !k.is_aktif : k.is_aktif) && (timAktif === 'semua' || timKar[k.id]?.key === timAktif));
     const rows = q ? sesuaiStatus.filter(k => [k.nama_lengkap, k.nip, k.username, namaAtasan(k), k.jabatan, lokasiById[k.id_lokasi]].some(v => v?.toLowerCase().includes(q))) : sesuaiStatus;
     return urutkan(rows, urut, {
       nama: k => k.nama_lengkap,
       struktur: k => `${deptById[k.id_departemen] || 'zzz'} ${k.jabatan || ''} ${namaAtasan(k)}`,
       akun: k => (!k.is_approved ? 0 : k.device_id ? 1 : 2),
     });
-  }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif]);
+  }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif, timAktif, timKar]);
 
   // Yang boleh membawahi Marketing: job role tercentang "bisa jadi atasan" (Business Manager, Branch Manager, Vice President)
   const bisaMembawahi = (k) => jabatanAtasan.has(k.jabatan);
@@ -494,7 +505,7 @@ export default function KaryawanPage() {
     setShowManual(false);
   };
 
-  const getStyleInput = (isError) => `w-full px-3 py-2.5 border rounded-lg mt-1 outline-none transition-colors text-base sm:text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
+  const getStyleInput = (isError) => `w-full px-3 py-2 border rounded-lg mt-1 outline-none transition-colors text-base sm:text-sm ${isError ? 'border-rose-500 bg-rose-50 focus:ring-1 focus:ring-rose-500' : 'border-slate-200 bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-400'}`;
   return (
     <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -522,6 +533,22 @@ export default function KaryawanPage() {
       </div>
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+        {opsiTim.length > 0 && (
+          <div className="flex gap-1.5 px-4 py-3 border-b border-slate-100 overflow-x-auto scrollbar-hide sm:flex-wrap" role="tablist" aria-label="Divisi / tim">
+            {[{ key: 'semua', nama: 'Semua', n: lihatNonaktif ? jumlahNonaktif : jumlahAktif }, ...opsiTim].map(t => {
+              const aktif = timAktif === t.key;
+              const titik = t.divisi === 'Marketing' ? (t.nama === 'Marketing tanpa atasan' ? 'bg-rose-500' : 'bg-emerald-500') : t.divisi === 'Backoffice' ? 'bg-blue-500' : 'bg-rose-500';
+              return (
+                <button key={t.key} role="tab" aria-selected={aktif} onClick={() => setFilterTim(t.key)}
+                  className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border font-semibold whitespace-nowrap transition-colors ${aktif ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                  {t.key !== 'semua' && <span className={`w-2 h-2 rounded-full ${aktif ? 'bg-white' : titik}`} />}
+                  {t.nama}
+                  <span className={`text-xs tabular-nums ${aktif ? 'text-white/70' : 'text-slate-400'}`}>{t.n}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm text-slate-600 min-w-[760px]">
             <thead className="bg-slate-50 text-slate-500 border-b border-slate-200 text-xs">
@@ -534,7 +561,7 @@ export default function KaryawanPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {daftarTampil.length === 0 && (
-                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{cari ? `Tidak ada karyawan yang cocok dengan "${cari}".` : lihatNonaktif ? 'Tidak ada karyawan nonaktif.' : 'Belum ada karyawan.'}</td></tr>
+                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{cari ? `Tidak ada karyawan yang cocok dengan "${cari}"${timAktif !== 'semua' ? ' di kelompok ini' : ''}.` : lihatNonaktif ? 'Tidak ada karyawan nonaktif.' : 'Belum ada karyawan.'}</td></tr>
               )}
               {daftarTampil.map((kar) => {
                 const dept = namaDept(kar);
@@ -543,7 +570,7 @@ export default function KaryawanPage() {
                 return (
                   <tr key={kar.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-bold text-slate-900">{kar.nama_lengkap}</p>
+                      <button type="button" onClick={() => setIdInfo(kar.id)} className="font-bold text-slate-900 hover:text-blue-700 hover:underline underline-offset-2 text-left" title="Lihat info & rekap absensi">{kar.nama_lengkap}</button>
                       <p className="text-xs font-mono text-slate-500 mt-0.5">{kar.nip} | Username: {kar.username}</p>
                     </td>
                     <td className="px-6 py-4">
@@ -604,18 +631,35 @@ export default function KaryawanPage() {
         </div>
         {karyawan.length > 0 && (
           <div className="px-6 py-3 border-t border-slate-100 text-sm text-slate-500 tabular-nums">
-            {`${daftarTampil.length} karyawan ${lihatNonaktif ? 'nonaktif' : 'aktif'}`}
+            {`${daftarTampil.length} karyawan ${lihatNonaktif ? 'nonaktif' : 'aktif'}${timAktif !== 'semua' ? ` · ${opsiTim.find(t => t.key === timAktif)?.nama}` : ''}`}
           </div>
         )}
       </div>
+
+      {idInfo && <InfoKaryawan id={idInfo} onClose={() => setIdInfo(null)} />}
 
       {/* MODAL TAMBAH / EDIT KARYAWAN */}
       {showModal && (
         <Modal judul={editKar ? `Edit Karyawan · ${editKar.nama_lengkap}` : 'Tambah Karyawan'} onClose={() => setShowModal(false)} lebar="sm:max-w-4xl">
           <form onSubmit={handleSimpanKaryawan} className="p-5 sm:p-6">
-           <div className="grid md:grid-cols-2 gap-x-8 gap-y-5">
-            <div className="space-y-5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Data karyawan</p>
+           {/* Baris atas: nama & lokasi. Lalu 2 kolom: struktur | akun & allowance. Dibuat ringkas supaya di laptop tidak perlu scroll. */}
+           <div className="grid sm:grid-cols-2 gap-x-6 gap-y-3.5">
+            <div>
+              <label className="text-sm font-semibold text-slate-700">Nama Lengkap <span className="text-rose-500">*</span></label>
+              <input type="text" value={form.nama_lengkap} onChange={e => { setForm({ ...form, nama_lengkap: e.target.value }); setErrorsKar({ ...errorsKar, nama_lengkap: null }); }} className={getStyleInput(errorsKar.nama_lengkap)} placeholder="Contoh: Aris Wijaya" />
+              <ErrText msg={errorsKar.nama_lengkap} />
+            </div>
+            <div>
+              <label className="text-sm font-semibold text-slate-700">Lokasi Kerja <span className="text-rose-500">*</span></label>
+              <select value={form.id_lokasi} onChange={e => { setForm({ ...form, id_lokasi: e.target.value }); setErrorsKar({ ...errorsKar, id_lokasi: null }); }} className={getStyleInput(errorsKar.id_lokasi)}>
+                <option value="">-- Pilih Lokasi --</option>
+                {lokasiList.map(l => <option key={l.id} value={l.id}>{l.nama_cabang}</option>)}
+              </select>
+              <ErrText msg={errorsKar.id_lokasi} />
+            </div>
+           </div>
+           <div className="grid md:grid-cols-2 gap-x-6 gap-y-3.5 mt-3.5 pt-3.5 border-t border-slate-100">
+            <div className="space-y-3.5">
             <div>
               <label className="text-sm font-semibold text-slate-700">Departemen <span className="text-rose-500">*</span></label>
               <div className="grid grid-cols-2 gap-2 mt-1">
@@ -655,25 +699,10 @@ export default function KaryawanPage() {
                 <ErrText msg={errorsKar.id_atasan} />
               </div>
             )}
-
-            <div>
-              <label className="text-sm font-semibold text-slate-700">Lokasi Kerja <span className="text-rose-500">*</span></label>
-              <select value={form.id_lokasi} onChange={e => { setForm({ ...form, id_lokasi: e.target.value }); setErrorsKar({ ...errorsKar, id_lokasi: null }); }} className={getStyleInput(errorsKar.id_lokasi)}>
-                <option value="">-- Pilih Lokasi --</option>
-                {lokasiList.map(l => <option key={l.id} value={l.id}>{l.nama_cabang}</option>)}
-              </select>
-              <ErrText msg={errorsKar.id_lokasi} />
+            {editKar && <BagianTtd idKaryawan={editKar.id} nama={editKar.nama_lengkap} />}
             </div>
 
-            <div>
-              <label className="text-sm font-semibold text-slate-700">Nama Lengkap <span className="text-rose-500">*</span></label>
-              <input type="text" value={form.nama_lengkap} onChange={e => { setForm({ ...form, nama_lengkap: e.target.value }); setErrorsKar({ ...errorsKar, nama_lengkap: null }); }} className={getStyleInput(errorsKar.nama_lengkap)} placeholder="Contoh: Aris Wijaya" />
-              <ErrText msg={errorsKar.nama_lengkap} />
-            </div>
-            </div>
-
-            <div className="space-y-5 md:border-l md:border-slate-100 md:pl-8">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Akun & allowance</p>
+            <div className="space-y-3.5 md:border-l md:border-slate-100 md:pl-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">NIP (Otomatis)</label>
@@ -714,7 +743,6 @@ export default function KaryawanPage() {
               );
             })()}
 
-            {editKar && <BagianTtd idKaryawan={editKar.id} nama={editKar.nama_lengkap} />}
             </div>
            </div>
 
@@ -848,13 +876,18 @@ export default function KaryawanPage() {
                           const v = e.target.value;
                           setManual(v === LAINNYA
                             ? { ...manual, alasanLain: true, keterangan: ALASAN_MANUAL.includes(manual.keterangan) ? '' : manual.keterangan }
-                            : { ...manual, alasanLain: false, keterangan: v });
+                            : { ...manual, alasanLain: false, keterangan: v,
+                                ...(v === ALASAN_APPOINTMENT && !manual.pakaiShift ? { masuk: JAM_APPOINTMENT } : {}) });
+                          if (v === ALASAN_APPOINTMENT && !manual.pakaiShift) setErrorsManual({ ...errorsManual, masuk: null });
                         }} className={getStyleInput(false)}>
                           <option value="">-- Pilih alasan --</option>
                           {ALASAN_MANUAL.map(a => <option key={a} value={a}>{a}</option>)}
                           <option value={LAINNYA}>{LAINNYA}</option>
                         </select>
                       </div>
+                      {pilihan === ALASAN_APPOINTMENT && !manual.pakaiShift && (
+                        <p className="text-[11px] text-slate-500">Jam masuk otomatis diisi {JAM_APPOINTMENT}. Masih bisa diubah.</p>
+                      )}
                       {pilihan === LAINNYA && (
                         <input type="text" autoFocus placeholder="Tulis alasannya" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />
                       )}

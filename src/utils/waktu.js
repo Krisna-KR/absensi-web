@@ -76,3 +76,32 @@ export function waktuRelatif(iso) {
   if (detik < 172800) return 'kemarin';
   return formatTanggal(tanggalWIB(new Date(iso)));
 }
+
+/**
+ * Periode absensi (cut-off tanggal 21 s/d 20) yang memuat tanggal `ymd`.
+ * geser = -1 untuk periode sebelumnya, +1 untuk sesudahnya.
+ * Contoh: 2026-10-20 -> { mulai: '2026-09-21', sampai: '2026-10-20' }
+ */
+export function periodeAbsensi(ymd = tanggalWIB(), geser = 0) {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const bulanAkhir = (d >= 21 ? m : m - 1) + geser;   // bulan (0-based utk Date.UTC) tempat tanggal 20 berada
+  const akhir = new Date(Date.UTC(y, bulanAkhir, 20));
+  const awal = new Date(Date.UTC(y, bulanAkhir - 1, 21));
+  return { mulai: awal.toISOString().slice(0, 10), sampai: akhir.toISOString().slice(0, 10) };
+}
+
+/** '2026-09-21','2026-10-20' -> '21 Sep – 20 Okt 2026' */
+export function labelRentang(mulai, sampai) {
+  const [y1, m1, d1] = mulai.split('-').map(Number);
+  const [y2, m2, d2] = sampai.split('-').map(Number);
+  if (mulai === sampai) return `${d1} ${BULAN[m1 - 1]} ${y1}`;
+  return `${d1} ${BULAN[m1 - 1]}${y1 !== y2 ? ` ${y1}` : ''} – ${d2} ${BULAN[m2 - 1]} ${y2}`;
+}
+
+/** 'YYYY-MM-DD' -> '20 Oktober 2026' */
+export function formatTanggalPanjang(ymd) {
+  if (!ymd) return '-';
+  const NAMA = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+  const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number);
+  return `${d} ${NAMA[m - 1]} ${y}`;
+}

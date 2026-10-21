@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState } from "react";
-import { Calendar, Home, LogOut, Users, Database, MonitorSmartphone, Loader2 } from "lucide-react";
+import { Home, LogOut, Users, Database, MonitorSmartphone, Loader2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import Notifikasi from "@/components/Notifikasi";
 import MenuRekap from "@/components/MenuRekap";
+import MenuKehadiran from "@/components/MenuKehadiran";
 import { supabase } from "@/utils/supabase/client";
 import { ambilToken, hapusToken } from "@/utils/sesi";
 
@@ -74,7 +75,7 @@ export default function AdminLayout({ children }) {
 
         <div className="flex items-center gap-0.5 2xl:gap-1 text-sm w-full lg:w-auto overflow-x-auto pb-2 lg:pb-0 scrollbar-hide whitespace-nowrap">
             <Link href="/" className={getNavClass("/")}><Home className="w-4 h-4 shrink-0" /> Dashboard</Link>
-            <Link href="/kehadiran" className={getNavClass("/kehadiran")}><Calendar className="w-4 h-4 shrink-0" /> Kehadiran</Link>
+            <MenuKehadiran />
             <Link href="/karyawan" className={getNavClass("/karyawan")}><Users className="w-4 h-4 shrink-0" /> Karyawan</Link>
             <MenuRekap />
             <Link href="/master" className={getNavClass("/master")}><Database className="w-4 h-4 shrink-0" /> Master Data</Link>

@@ -48,3 +48,33 @@ export function hitungStatus(rows) {
   for (const r of rows) if (c[r.status] !== undefined) c[r.status]++;
   return c;
 }
+
+/** Nama kelompok untuk tampilan per tim: Backoffice, atau "Tim <kepala tim>" untuk Marketing */
+export function namaTim(r) {
+  if (r.nama_departemen === 'Marketing') return `Tim ${r.nama_atasan || r.nama_lengkap}`;
+  return r.nama_departemen || 'Tanpa departemen';
+}
+
+/** Urutan kelompok: divisi A-Z (Backoffice, Marketing), lalu nama tim A-Z. Tanpa departemen paling akhir. */
+export function bandingTim(a, b) {
+  const da = a.divisi || '\uffff', db = b.divisi || '\uffff';
+  return da.localeCompare(db, 'id') || a.nama.localeCompare(b.nama, 'id');
+}
+
+/** Kelompokkan baris (punya nama_departemen, nama_atasan, nama_lengkap) per tim, sudah terurut. */
+export function kelompokPerTim(rows) {
+  const peta = new Map();
+  for (const r of rows) {
+    const nama = namaTim(r);
+    const key = `${r.nama_departemen || ''}|${nama}`;
+    if (!peta.has(key)) peta.set(key, { key, nama, divisi: r.nama_departemen || null, rows: [] });
+    peta.get(key).rows.push(r);
+  }
+  return [...peta.values()].sort(bandingTim);
+}
+
+/** 8 -> '1 minggu 3 hari' (1 minggu = 5 hari kerja) */
+export function formatHariKerja(n) {
+  const minggu = Math.floor(n / 5), hari = n % 5;
+  return [minggu && `${minggu} minggu`, hari && `${hari} hari`].filter(Boolean).join(' ') || '0 hari';
+}
