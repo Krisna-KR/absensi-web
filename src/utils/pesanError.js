@@ -13,6 +13,22 @@ export function pesanError(error) {
   const masihAda = pesan.match(/Masih ada (\d+) Marketing di bawah job role ini/);
   if (masihAda) return `${masihAda[1]} Marketing masih di bawah job role ini. Pindahkan dulu ke atasan lain.`;
   if (pesan === 'SESI_HABIS') return 'Sesi login berakhir. Muat ulang halaman lalu login lagi.';
+  // Hak akses & password (fungsi database)
+  const KODE = {
+    TIDAK_BERHAK: 'Kamu tidak punya hak untuk aksi ini. Minta superadmin menambahkan hak aksesnya.',
+    SANDI_LAMA_SALAH: 'Password lama salah.',
+    SANDI_PENDEK: 'Password baru minimal 6 karakter.',
+    SANDI_SAMA: 'Password baru harus beda dengan password lama.',
+    SUPERADMIN_TERKUNCI: 'Akun superadmin tidak bisa diubah, di-reset, atau dihapus dari sini.',
+    TIDAK_BISA_DIRI_SENDIRI: 'Aksi ini tidak bisa dilakukan untuk akunmu sendiri.',
+    USERNAME_DIPAKAI: 'Username ini sudah dipakai. Pilih username lain.',
+    USERNAME_TIDAK_VALID: 'Username 3–30 karakter, hanya huruf kecil, angka, titik, minus, atau garis bawah.',
+    PERAN_DIPAKAI: 'Nama peran ini sudah ada.',
+    NAMA_KOSONG: 'Isi nama minimal 2 huruf.',
+    DATA_TIDAK_ADA: 'Data tidak ditemukan. Muat ulang halaman.',
+    AKUN_NONAKTIF: 'Akun ini sudah dinonaktifkan. Hubungi superadmin.',
+  };
+  if (KODE[pesan]) return KODE[pesan];
   if (pesan === 'NOMINAL_MINUS') return 'Allowance dan komisi tidak boleh minus.';
   if (pesan === 'TTD_TIDAK_VALID') return 'Gambar tanda tangan tidak bisa disimpan. Coba coret ulang.';
   if (pesan.includes('Jabatan Backoffice harus')) return 'Pilih jabatan Backoffice: Business Manager, IT, atau Admin.';
@@ -35,7 +51,8 @@ export function pesanError(error) {
     if (pesan.includes('ada_jam')) return 'Isi jam masuk atau jam pulang.';
     return 'Isian belum sesuai aturan. Periksa lagi datanya.';
   }
-  if (kode === '42501' || pesan.includes('row-level security') || pesan.includes('permission denied')) {
+  if (pesan.includes('row-level security')) return KODE.TIDAK_BERHAK;
+  if (kode === '42501' || pesan.includes('permission denied')) {
     return 'Aplikasi belum punya izin membuka data ini. Hubungi admin sistem.';
   }
 

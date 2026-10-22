@@ -42,6 +42,7 @@ export default function MenuNav({ label, icon: IconTab, base, items }) {
     };
   }, [posisi]);
 
+  if (!items.length) return null;
   return (
     <>
       <button ref={tombolRef} type="button" onClick={toggle} aria-haspopup="menu" aria-expanded={!!posisi}

@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/utils/supabase/client';
 import { Html5Qrcode } from 'html5-qrcode';
-import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight, PenLine } from 'lucide-react';
+import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight, PenLine, KeyRound } from 'lucide-react';
 import NotifAllowance from '@/components/NotifAllowance';
 import RiwayatKehadiran from '@/components/RiwayatKehadiran';
 import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
@@ -10,6 +10,7 @@ import { hitungStatus, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { ambilToken, simpanToken, hapusToken, kodeError } from '@/utils/sesi';
 import { useFeedback } from '@/components/Feedback';
+import GantiSandi from '@/components/GantiSandi';
 import Image from 'next/image';
 
 // Pesan untuk kode error dari fungsi database (fn_login_karyawan, fn_absen, ...)
@@ -63,8 +64,9 @@ export default function MobileScannerPage() {
   const [tab, setTab] = useState('home');           // 'home' | 'history' | 'notif'
   const [allowance, setAllowance] = useState([]);
   const [pilihShift, setPilihShift] = useState(false);
+  const [gantiSandi, setGantiSandi] = useState(false);
   const shiftRef = useRef(null);
-  const { info, konfirmasi } = useFeedback();
+  const { info, konfirmasi, toast } = useFeedback();
 
   // State Registrasi
   const [regType, setRegType] = useState('MT'); // 'MT' atau 'BO'
@@ -292,15 +294,18 @@ export default function MobileScannerPage() {
       <div className="w-full max-w-md flex flex-col relative bg-slate-50 shadow-2xl overflow-x-hidden">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center p-5 bg-white border-b border-slate-200 z-10">
-          <div className="flex items-center gap-3">
-            <Image src="/logo-gifx.png" alt="Logo GIFX" width={40} height={40} priority className="w-10 h-10 rounded-full shadow-sm" />
-            <h1 className="font-bold text-lg text-slate-900 tracking-wide">Absensi GIFX</h1>
+        <div className="flex justify-between items-center gap-2 px-4 py-5 sm:px-5 bg-white border-b border-slate-200 z-10">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Image src="/logo-gifx.png" alt="Logo GIFX" width={40} height={40} priority className="w-10 h-10 rounded-full shadow-sm shrink-0" />
+            <h1 className="font-bold text-base min-[400px]:text-lg text-slate-900 tracking-wide whitespace-nowrap">Absensi GIFX</h1>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5 shrink-0">
             <button onClick={handleInstallApp} className="px-3 py-1.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg shadow-sm border border-blue-100 flex items-center gap-1 active:bg-blue-100 transition-colors">
               <LayoutGrid className="w-3 h-3" /> APP
             </button>
+            {step !== 1 && step !== 0 && (
+              <button onClick={() => setGantiSandi(true)} aria-label="Ganti password" title="Ganti password" className="px-2.5 py-1.5 bg-slate-50 text-slate-600 border border-slate-200 font-bold text-xs rounded-lg shadow-sm flex items-center"><KeyRound className="w-3.5 h-3.5" /></button>
+            )}
             {step !== 1 && step !== 0 && (
               <button onClick={handleLogout} className="px-3 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 font-bold text-xs rounded-lg shadow-sm">Logout</button>
             )}
@@ -528,6 +533,11 @@ export default function MobileScannerPage() {
               })}
             </div>
           </div>
+        )}
+
+        {gantiSandi && (
+          <GantiSandi rpc="fn_karyawan_ganti_sandi" onClose={() => setGantiSandi(false)}
+            onSelesai={(d) => { if (d?.token) simpanToken('karyawan', d.token); setGantiSandi(false); toast('Password sudah diganti. Pakai password baru saat login berikutnya.'); }} />
         )}
 
         {/* BOTTOM NAV */}

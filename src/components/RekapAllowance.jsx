@@ -5,6 +5,7 @@ import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
 import InputRupiah from '@/components/InputRupiah';
+import { useAkses } from '@/components/AksesAdmin';
 import { formatRupiah, rupiahSingkat } from '@/utils/rupiah';
 import { tanggalWIB, formatTanggalWaktu } from '@/utils/waktu';
 
@@ -74,6 +75,7 @@ function Slip({ r, periodeLabel }) {
 
 export default function RekapAllowance() {
   const { toast, konfirmasi } = useFeedback();
+  const bisaUbah = useAkses().boleh('allowance', 'ubah');   // tanpa hak Edit: hanya lihat & slip
   const sekarang = tanggalWIB();
   const [tahun, setTahun] = useState(Number(sekarang.slice(0, 4)));
   const [bulan, setBulan] = useState(Number(sekarang.slice(5, 7)));
@@ -293,7 +295,7 @@ export default function RekapAllowance() {
                 const warna = r.terkunci ? 'bg-rose-50/60' : r.kotor ? 'bg-amber-50/40' : pilih.has(r.id_karyawan) ? 'bg-blue-50/40' : 'hover:bg-slate-50';
                 return (
                   <tr key={r.id_karyawan} className={warna}>
-                    <td className="px-4 py-3"><input type="checkbox" aria-label={`Pilih ${r.nama}`} disabled={r.terkunci} checked={pilih.has(r.id_karyawan)} onChange={() => togglePilih(r.id_karyawan)} /></td>
+                    <td className="px-4 py-3"><input type="checkbox" aria-label={`Pilih ${r.nama}`} disabled={r.terkunci || !bisaUbah} checked={pilih.has(r.id_karyawan)} onChange={() => togglePilih(r.id_karyawan)} /></td>
                     <td className="px-4 py-3">
                       <p className="font-semibold text-slate-900">{r.nama}{!r.is_aktif && <span className="ml-1.5 text-[10px] font-bold text-rose-600">NONAKTIF</span>}</p>
                       <p className="text-xs text-slate-500"><span className="font-mono">{r.nip}</span> · {r.jabatan} · {r.departemen === 'Marketing' ? `Tim ${r.tim || '-'}` : r.departemen}{r.lokasi ? ` · ${r.lokasi}` : ''}</p>
@@ -305,10 +307,10 @@ export default function RekapAllowance() {
                           <span className={`block text-[10px] font-semibold ${r.allowance_khusus !== null && r.allowance_khusus !== undefined ? 'text-violet-600' : 'text-slate-400'}`}>{r.allowance_khusus !== null && r.allowance_khusus !== undefined ? 'flat · khusus' : 'flat'}</span>
                         </>
                       ) : (
-                        <InputRupiah value={r.nominalTampil} disabled={r.terkunci} placeholder="Isi" onChange={v => aturNilai(r.id_karyawan, 'nominal', v)} aria-label={`Allowance ${r.nama}`} />
+                        <InputRupiah value={r.nominalTampil} disabled={r.terkunci || !bisaUbah} placeholder="Isi" onChange={v => aturNilai(r.id_karyawan, 'nominal', v)} aria-label={`Allowance ${r.nama}`} />
                       )}
                     </td>
-                    <td className="px-4 py-3"><InputRupiah value={r.komisiTampil} disabled={r.terkunci} onChange={v => aturNilai(r.id_karyawan, 'komisi', v)} aria-label={`Komisi ${r.nama}`} /></td>
+                    <td className="px-4 py-3"><InputRupiah value={r.komisiTampil} disabled={r.terkunci || !bisaUbah} onChange={v => aturNilai(r.id_karyawan, 'komisi', v)} aria-label={`Komisi ${r.nama}`} /></td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums whitespace-nowrap text-slate-900">{formatRupiah(r.totalTampil)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-md border ${st.cls}`}>
@@ -353,7 +355,7 @@ export default function RekapAllowance() {
       </div>
 
       {/* ===== Bar aksi ===== */}
-      <div className={`fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(15,23,42,0.06)] ${slip ? 'hidden' : 'print:hidden'}`}>
+      {bisaUbah && <div className={`fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(15,23,42,0.06)] ${slip ? 'hidden' : 'print:hidden'}`}>
         <div className="max-w-screen-2xl mx-auto px-6 py-3 flex flex-wrap items-center gap-3">
           <span className={`text-sm font-medium px-3 py-1 rounded-full ${kotor.length ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>{kotor.length} perubahan</span>
           {dipilih.length > 0 && <span className="text-sm text-blue-700">{dipilih.length} dipilih</span>}
@@ -368,7 +370,7 @@ export default function RekapAllowance() {
             </button>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ===== Preview & cetak slip ===== */}
       {slip && (

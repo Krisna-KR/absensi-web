@@ -6,6 +6,7 @@ import { pesanError } from '@/utils/pesanError';
 import { formatHariKerja, bandingTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { useFeedback } from '@/components/Feedback';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import { useAkses } from '@/components/AksesAdmin';
 import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
 
 const SEMINGGU = 5; // hari kerja
@@ -31,6 +32,7 @@ const labelTim = (r) => (r.nama_departemen === 'Marketing' ? (r.nama_tim ? `Tim 
  */
 export default function TidakMasuk() {
   const { toast, konfirmasi } = useFeedback();
+  const bisaHapus = useAkses().boleh('karyawan', 'hapus');
   const [rows, setRows] = useState(null);
   const [galat, setGalat] = useState('');
   const [versi, setVersi] = useState(0);
@@ -155,7 +157,7 @@ export default function TidakMasuk() {
                   <KolomUrut kunci="jabatan" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Jabatan</KolomUrut>
                   <KolomUrut kunci="terakhir" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Terakhir absen</KolomUrut>
                   <KolomUrut kunci="hari" urut={urut} onUrut={gantiUrut} pad="px-3 py-2.5">Tidak masuk (hari kerja)</KolomUrut>
-                  <th className="px-5 py-2.5 font-semibold text-right">Aksi</th>
+                  {bisaHapus && <th className="px-5 py-2.5 font-semibold text-right">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -174,12 +176,12 @@ export default function TidakMasuk() {
                     <td className="px-3 py-2.5">
                       <span className={`inline-block px-2 py-0.5 rounded-md border text-xs font-bold tabular-nums ${kelasHari(r.hari_kerja)}`} title={`${r.hari_kerja} hari kerja`}>{formatHariKerja(r.hari_kerja)}</span>
                     </td>
-                    <td className="px-5 py-2.5 text-right">
+                    {bisaHapus && (<td className="px-5 py-2.5 text-right">
                       <button onClick={() => hapus(r)} disabled={sibuk === r.id_karyawan} title="Nonaktifkan karyawan"
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-600 border border-rose-200 bg-rose-50 hover:bg-rose-100 rounded-lg disabled:opacity-50">
                         {sibuk === r.id_karyawan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}Hapus
                       </button>
-                    </td>
+                    </td>)}
                   </tr>
                 ))}
               </tbody>

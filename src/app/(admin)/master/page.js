@@ -6,6 +6,7 @@ import InputRupiah from '@/components/InputRupiah';
 import { formatRupiah } from '@/utils/rupiah';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
+import { useAkses } from '@/components/AksesAdmin';
 
 const TAB = [
   { key: 'lokasi', label: 'Lokasi', icon: MapPin },
@@ -24,6 +25,8 @@ const kelasInput = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-sm 
 
 export default function MasterDataPage() {
   const { toast, konfirmasi } = useFeedback();
+  const { boleh } = useAkses();
+  const bisa = { tambah: boleh('master', 'tambah'), ubah: boleh('master', 'ubah'), hapus: boleh('master', 'hapus') };
   const [tab, setTab] = useState('lokasi');
   const [lokasi, setLokasi] = useState([]);
   const [departemen, setDepartemen] = useState([]);
@@ -147,7 +150,7 @@ export default function MasterDataPage() {
 
       {tab === 'lokasi' && (
         <div className="grid lg:grid-cols-3 gap-4 items-start">
-          <form onSubmit={simpanLokasi} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+          {(formLokasi.id ? bisa.ubah : bisa.tambah) ? <form onSubmit={simpanLokasi} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
             <h2 className="font-semibold text-slate-900">{formLokasi.id ? 'Ubah lokasi' : 'Tambah lokasi'}</h2>
             <div>
               <label className="text-sm font-medium text-slate-700">Nama cabang</label>
@@ -163,7 +166,7 @@ export default function MasterDataPage() {
                 {formLokasi.id ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{formLokasi.id ? 'Simpan' : 'Tambah'}
               </button>
             </div>
-          </form>
+          </form> : <p className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-sm text-slate-500">Kamu hanya bisa melihat data lokasi.</p>}
 
           <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <table className="w-full text-sm text-left text-slate-600">
@@ -180,8 +183,8 @@ export default function MasterDataPage() {
                     </td>
                     <td className="px-5 py-3 text-center font-semibold text-slate-900 tabular-nums">{hitung(k => k.id_lokasi === l.id)}</td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => setFormLokasi({ id: l.id, nama_cabang: l.nama_cabang, alamat: l.alamat || '' })} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" title="Ubah"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => hapusLokasi(l)} className="p-2 rounded-lg text-rose-500 hover:bg-rose-50" title="Hapus"><Trash2 className="w-4 h-4" /></button>
+                      {bisa.ubah && <button onClick={() => setFormLokasi({ id: l.id, nama_cabang: l.nama_cabang, alamat: l.alamat || '' })} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" title="Ubah"><Edit2 className="w-4 h-4" /></button>}
+                      {bisa.hapus && <button onClick={() => hapusLokasi(l)} className="p-2 rounded-lg text-rose-500 hover:bg-rose-50" title="Hapus"><Trash2 className="w-4 h-4" /></button>}
                     </td>
                   </tr>
                 ))}
@@ -215,7 +218,7 @@ export default function MasterDataPage() {
                 </div>
                 <div className="inline-flex p-1 bg-white border border-slate-200 rounded-lg text-xs font-semibold shrink-0">
                   {[[true, 'Flat'], [false, 'Manual']].map(([v, l]) => (
-                    <button key={l} onClick={() => !!d.allowance_flat !== v && ubahFlat(d, v)}
+                    <button key={l} disabled={!bisa.ubah} onClick={() => !!d.allowance_flat !== v && ubahFlat(d, v)}
                       className={`px-3 py-1.5 rounded-md transition-colors ${!!d.allowance_flat === v ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>{l}</button>
                   ))}
                 </div>
@@ -232,7 +235,7 @@ export default function MasterDataPage() {
 
       {tab === 'jabatan' && (
         <div className="grid lg:grid-cols-3 gap-4 items-start">
-          <form onSubmit={simpanJabatan} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
+          {(formJabatan.lama ? bisa.ubah : bisa.tambah) ? <form onSubmit={simpanJabatan} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-3">
             <h2 className="font-semibold text-slate-900">{formJabatan.lama ? `Ubah ${formJabatan.lama}` : 'Tambah job role'}</h2>
             <div>
               <label className="text-sm font-medium text-slate-700">Nama job role</label>
@@ -272,7 +275,7 @@ export default function MasterDataPage() {
                 {formJabatan.lama ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{formJabatan.lama ? 'Simpan' : 'Tambah'}
               </button>
             </div>
-          </form>
+          </form> : <p className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm text-sm text-slate-500">Kamu hanya bisa melihat data job role.</p>}
 
           <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
             <table className="w-full text-sm text-left text-slate-600">
@@ -300,8 +303,8 @@ export default function MasterDataPage() {
                     <td className="px-5 py-3 text-right tabular-nums whitespace-nowrap">{j.allowance ? formatRupiah(j.allowance) : <span className="text-slate-300">Belum diisi</span>}</td>
                     <td className="px-5 py-3 text-center font-semibold text-slate-900 tabular-nums">{hitung(k => k.jabatan === j.nama)}</td>
                     <td className="px-5 py-3 text-right whitespace-nowrap">
-                      <button onClick={() => setFormJabatan({ lama: j.nama, nama: j.nama, id_departemen: j.id_departemen, bisa_jadi_atasan: j.bisa_jadi_atasan, allowance: j.allowance || null, pakai_shift: !!j.pakai_shift })} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" title="Ubah"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => hapusJabatan(j)} className="p-2 rounded-lg text-rose-500 hover:bg-rose-50" title="Hapus"><Trash2 className="w-4 h-4" /></button>
+                      {bisa.ubah && <button onClick={() => setFormJabatan({ lama: j.nama, nama: j.nama, id_departemen: j.id_departemen, bisa_jadi_atasan: j.bisa_jadi_atasan, allowance: j.allowance || null, pakai_shift: !!j.pakai_shift })} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100" title="Ubah"><Edit2 className="w-4 h-4" /></button>}
+                      {bisa.hapus && <button onClick={() => hapusJabatan(j)} className="p-2 rounded-lg text-rose-500 hover:bg-rose-50" title="Hapus"><Trash2 className="w-4 h-4" /></button>}
                     </td>
                   </tr>
                 ))}
