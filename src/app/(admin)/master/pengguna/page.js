@@ -14,51 +14,60 @@ const kelasInput = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-bas
 const petaAkses = (arr) => Object.fromEntries((arr || []).map(a => [a.menu, a]));
 const jumlahMenu = (efektif) => Object.values(efektif || {}).filter(a => a.lihat).length;
 
-// Sel centang untuk peran: on / off
-function Centang({ nilai, onChange, disabled }) {
+// Satu sel hak akses: tombol Allow & Deny.
+// Role (wajib): selalu salah satu menyala. User: klik menyala, klik lagi mati (null = ikut role).
+// dariRole: nilai role untuk sel ini, ditandai garis putus-putus saat user belum memilih.
+function PilihAkses({ nilai, onChange, wajib = false, dariRole }) {
+  const klik = (v) => onChange(wajib ? v : (nilai === v ? null : v));
+  const tombol = (v, label, Icon, nyala) => {
+    const ikut = nilai == null && dariRole === v;
+    return (
+      <button type="button" onClick={() => klik(v)} aria-pressed={nilai === v}
+        title={ikut ? `Ikut role: ${label}` : undefined}
+        className={`h-7 px-2 rounded-md text-[11px] font-bold inline-flex items-center gap-0.5 border transition-colors ${nilai === v ? nyala : ikut ? 'border-dashed border-slate-400 text-slate-600 bg-white' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+        <Icon className="w-3 h-3" />{label}
+      </button>
+    );
+  };
   return (
-    <button type="button" disabled={disabled} onClick={() => onChange(!nilai)} aria-pressed={nilai}
-      className={`w-8 h-8 rounded-lg border flex items-center justify-center mx-auto transition-colors ${nilai ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-transparent hover:border-slate-400'} disabled:opacity-50`}>
-      <Check className="w-4 h-4" />
-    </button>
-  );
-}
-
-// Sel khusus user: ikut peran / izinkan / tolak. Menampilkan hasil akhirnya.
-function SelUser({ nilai, dariPeran, onChange, disabled }) {
-  const hasil = nilai ?? dariPeran;
-  const opsi = [[null, 'Peran'], [true, 'Izin'], [false, 'Tolak']];
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div className="inline-flex p-0.5 bg-slate-100 rounded-md text-[10px] font-bold">
-        {opsi.map(([v, l]) => (
-          <button key={l} type="button" disabled={disabled} onClick={() => onChange(v)}
-            className={`px-1.5 py-0.5 rounded ${nilai === v ? (v === true ? 'bg-emerald-600 text-white' : v === false ? 'bg-rose-600 text-white' : 'bg-white text-slate-700 shadow-sm') : 'text-slate-500'} disabled:opacity-60`}>{l}</button>
-        ))}
-      </div>
-      <span className={`inline-flex items-center gap-0.5 text-[11px] font-semibold ${hasil ? 'text-emerald-700' : 'text-slate-400'}`}>
-        {hasil ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}{hasil ? 'Boleh' : 'Tidak'}
-      </span>
+    <div className="inline-flex p-0.5 gap-0.5 rounded-lg bg-slate-100">
+      {tombol(true, 'Allow', Check, 'bg-emerald-600 border-emerald-600 text-white')}
+      {tombol(false, 'Deny', X, 'bg-rose-600 border-rose-600 text-white')}
     </div>
   );
 }
 
+function Saklar({ nyala, onChange, label }) {
+  return (
+    <button type="button" role="switch" aria-checked={nyala} onClick={() => onChange(!nyala)} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+      <span className={`relative w-10 h-6 rounded-full transition-colors ${nyala ? 'bg-emerald-600' : 'bg-slate-300'}`}>
+        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${nyala ? 'left-[1.125rem]' : 'left-0.5'}`} />
+      </span>
+      {label}
+    </button>
+  );
+}
+
+// Isi semua sel yang ada di menu dengan satu nilai
+const isiSemua = (menu, v) => Object.fromEntries(menu.map(m => [m.menu, Object.fromEntries(m.aksi.map(x => [x, v]))]));
+const semuaAllow = (menu, nilaiSel) => menu.every(m => m.aksi.every(x => nilaiSel(m.menu, x) === true));
+
 function TabelAkses({ menu, render }) {
   return (
     <div className="overflow-x-auto border border-slate-200 rounded-xl">
-      <table className="w-full text-sm min-w-[520px]">
+      <table className="w-full text-sm min-w-[640px]">
         <thead className="bg-slate-50 text-slate-500 text-xs">
           <tr>
             <th className="px-3 py-2 text-left font-semibold">Menu</th>
-            {SEMUA_AKSI.map(a => <th key={a} className="px-2 py-2 font-semibold text-center w-24">{LABEL_AKSI[a]}</th>)}
+            {SEMUA_AKSI.map(a => <th key={a} className="px-2 py-2 font-semibold text-center w-32">{LABEL_AKSI[a]}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {menu.map(m => (
             <tr key={m.menu}>
-              <td className="px-3 py-2 font-semibold text-slate-800">{m.label}</td>
+              <td className="px-3 py-1.5 font-semibold text-slate-800 whitespace-nowrap">{m.label}</td>
               {SEMUA_AKSI.map(a => (
-                <td key={a} className="px-2 py-2 text-center">{m.aksi.includes(a) ? render(m.menu, a) : <span className="text-slate-300">–</span>}</td>
+                <td key={a} className="px-2 py-1.5 text-center">{m.aksi.includes(a) ? render(m.menu, a) : <span className="text-slate-300">–</span>}</td>
               ))}
             </tr>
           ))}
@@ -106,7 +115,8 @@ export default function PenggunaPage() {
   const simpanUser = async (e) => {
     e.preventDefault();
     const f = formUser;
-    const akses = Object.entries(f.akses).map(([menu, a]) => ({ menu, lihat: a.lihat ?? null, tambah: a.tambah ?? null, ubah: a.ubah ?? null, hapus: a.hapus ?? null }));
+    const nilai = (menu, x) => f.akses[menu]?.[x] ?? null;   // null = ikut role
+    const akses = data.menu.map(m => ({ menu: m.menu, lihat: nilai(m.menu, 'lihat'), tambah: nilai(m.menu, 'tambah'), ubah: nilai(m.menu, 'ubah'), hapus: nilai(m.menu, 'hapus') }));
     setSibuk(true);
     const { error } = await supabase.rpc('fn_pengguna_simpan', {
       p_id: f.id, p_username: f.username, p_nama: f.nama, p_id_peran: f.id_peran || null, p_is_aktif: f.is_aktif, p_akses: akses,
@@ -148,37 +158,39 @@ export default function PenggunaPage() {
     const { error } = await supabase.rpc('fn_peran_simpan', { p_id: f.id, p_nama: f.nama, p_akses: akses });
     setSibuk(false);
     if (error) { toast(pesanError(error), 'gagal'); return; }
-    toast(`Peran ${f.nama} tersimpan.`); setFormPeran(null); muatUlang();
+    toast(`Role ${f.nama} tersimpan.`); setFormPeran(null); muatUlang();
   };
   const hapusPeran = async (p) => {
-    const ok = await konfirmasi({ judul: `Hapus peran ${p.nama}?`, pesan: p.jumlah_user ? `${p.jumlah_user} user memakai peran ini. Setelah dihapus mereka tanpa peran, jadi hanya punya hak dari centang khusus user.` : 'Peran ini belum dipakai user mana pun.', tombolYa: 'Hapus peran', nada: 'bahaya' });
+    const ok = await konfirmasi({ judul: `Hapus role ${p.nama}?`, pesan: p.jumlah_user ? `${p.jumlah_user} user memakai role ini. Setelah dihapus mereka tanpa role, jadi hanya punya hak yang diatur khusus di user.` : 'Role ini belum dipakai user mana pun.', tombolYa: 'Hapus role', nada: 'bahaya' });
     if (!ok) return;
     const { error } = await supabase.rpc('fn_peran_hapus', { p_id: p.id });
     if (error) { toast(pesanError(error), 'gagal'); return; }
-    toast(`Peran ${p.nama} dihapus.`); muatUlang();
+    toast(`Role ${p.nama} dihapus.`); muatUlang();
   };
 
   if (!data) return <div className="py-20 flex justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>;
   const peranDipilih = formUser ? peranById[formUser.id_peran] : null;
   const aksesPeranDipilih = petaAkses(peranDipilih?.akses);
+  const jumlahPilih = formUser ? data.menu.reduce((n, m) => n + m.aksi.filter(x => formUser.akses[m.menu]?.[x] != null).length, 0) : 0;
+  const efektifUser = (menu, x) => formUser.akses[menu]?.[x] ?? !!aksesPeranDipilih[menu]?.[x];
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Pengguna & hak akses</h1>
-          <p className="text-sm text-slate-500">Hak user = centang peran, lalu ditimpa centang khusus user. Superadmin selalu punya semua hak.</p>
+          <p className="text-sm text-slate-500">Hak user ikut role-nya, dan bisa diubah khusus per user. Superadmin selalu punya semua hak.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm" role="tablist">
-            {[['pengguna', 'Pengguna', Users], ['peran', 'Peran', ShieldCheck]].map(([k, l, Icon]) => (
+            {[['pengguna', 'Pengguna', Users], ['peran', 'Role', ShieldCheck]].map(([k, l, Icon]) => (
               <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold ${tab === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Icon className="w-4 h-4" />{l}</button>
             ))}
           </div>
           {bisa.tambah && (
             <button onClick={() => (tab === 'pengguna' ? bukaUser(null) : bukaPeran(null))} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700">
-              <Plus className="w-4 h-4" />{tab === 'pengguna' ? 'Tambah pengguna' : 'Tambah peran'}
+              <Plus className="w-4 h-4" />{tab === 'pengguna' ? 'Tambah pengguna' : 'Tambah role'}
             </button>
           )}
         </div>
@@ -193,7 +205,7 @@ export default function PenggunaPage() {
               <thead className="bg-slate-50 text-slate-500 text-xs border-b border-slate-200">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Pengguna</th>
-                  <th className="px-5 py-3 font-semibold">Peran</th>
+                  <th className="px-5 py-3 font-semibold">Role</th>
                   <th className="px-5 py-3 font-semibold">Akses</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
                   <th className="px-5 py-3 font-semibold text-right">Aksi</th>
@@ -210,7 +222,7 @@ export default function PenggunaPage() {
                       {u.is_superadmin
                         ? <span className="px-2 py-0.5 text-xs font-bold rounded-md bg-amber-50 text-amber-700 border border-amber-200">Superadmin</span>
                         : u.nama_peran ? <span className="px-2 py-0.5 text-xs font-semibold rounded-md bg-slate-100 text-slate-700 border border-slate-200">{u.nama_peran}</span>
-                        : <span className="text-xs text-slate-400">Tanpa peran</span>}
+                        : <span className="text-xs text-slate-400">Tanpa role</span>}
                       {!u.is_superadmin && u.akses.length > 0 && <p className="text-[11px] text-violet-700 mt-1">{u.akses.length} menu diatur khusus</p>}
                     </td>
                     <td className="px-5 py-3 text-xs text-slate-600">{u.is_superadmin ? 'Semua menu & aksi (terkunci)' : `${jumlahMenu(u.efektif)} dari ${data.menu.length} menu`}</td>
@@ -239,7 +251,7 @@ export default function PenggunaPage() {
 
       {tab === 'peran' && (
         <div className="grid lg:grid-cols-2 gap-4">
-          {data.peran.length === 0 && <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">Belum ada peran. Buat peran (misalnya HR atau Leader) supaya hak akses tidak perlu dicentang satu per satu di tiap user.</div>}
+          {data.peran.length === 0 && <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-500">Belum ada role. Buat role (misalnya HR atau Leader) supaya hak akses tidak perlu diatur satu per satu di tiap user.</div>}
           {data.peran.map(p => {
             const a = petaAkses(p.akses);
             return (
@@ -250,8 +262,8 @@ export default function PenggunaPage() {
                     <p className="text-xs text-slate-500">{p.jumlah_user} pengguna</p>
                   </div>
                   <div className="flex gap-1">
-                    {bisa.ubah && <button onClick={() => bukaPeran(p)} title="Edit peran" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100"><Edit2 className="w-4 h-4" /></button>}
-                    {bisa.hapus && <button onClick={() => hapusPeran(p)} title="Hapus peran" className="p-2 rounded-lg text-rose-500 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button>}
+                    {bisa.ubah && <button onClick={() => bukaPeran(p)} title="Edit role" className="p-2 rounded-lg text-slate-500 hover:bg-slate-100"><Edit2 className="w-4 h-4" /></button>}
+                    {bisa.hapus && <button onClick={() => hapusPeran(p)} title="Hapus role" className="p-2 rounded-lg text-rose-500 hover:bg-rose-50"><Trash2 className="w-4 h-4" /></button>}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -271,7 +283,7 @@ export default function PenggunaPage() {
 
       {/* ---------- Popup user ---------- */}
       {formUser && (
-        <Modal judul={formUser.id ? `Edit ${formUser.username}` : 'Tambah pengguna'} onClose={() => setFormUser(null)} lebar="sm:max-w-3xl">
+        <Modal judul={formUser.id ? `Edit ${formUser.username}` : 'Tambah pengguna'} onClose={() => setFormUser(null)} lebar="sm:max-w-4xl">
           <form onSubmit={simpanUser} className="p-5 sm:p-6 space-y-4">
             <div className="grid sm:grid-cols-3 gap-3">
               <label className="text-sm font-semibold text-slate-700">Username
@@ -280,15 +292,15 @@ export default function PenggunaPage() {
               <label className="text-sm font-semibold text-slate-700">Nama
                 <input value={formUser.nama} onChange={e => setFormUser({ ...formUser, nama: e.target.value })} placeholder="Nama tampilan" className={`${kelasInput} mt-1`} />
               </label>
-              <label className="text-sm font-semibold text-slate-700">Peran
+              <label className="text-sm font-semibold text-slate-700">Role
                 <select value={formUser.id_peran} disabled={formUser.saya} onChange={e => setFormUser({ ...formUser, id_peran: e.target.value })} className={`${kelasInput} mt-1`}>
-                  <option value="">Tanpa peran</option>
+                  <option value="">Tanpa role</option>
                   {data.peran.map(p => <option key={p.id} value={p.id}>{p.nama}</option>)}
                 </select>
               </label>
             </div>
             {formUser.saya ? (
-              <p className="text-sm px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">Ini akunmu. Kamu hanya bisa mengubah nama; peran, hak akses, dan status diatur oleh pengguna lain yang berhak.</p>
+              <p className="text-sm px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-600">Ini akunmu. Kamu hanya bisa mengubah nama; role, hak akses, dan status diatur oleh pengguna lain yang berhak.</p>
             ) : (
               <>
                 {!formUser.id && <p className="text-xs text-slate-500">Password awal <b className="font-mono">{SANDI_AWAL}</b>. Pengguna wajib menggantinya saat login pertama.</p>}
@@ -297,10 +309,19 @@ export default function PenggunaPage() {
                   Akun aktif <span className="text-xs text-slate-400">(nonaktif = tidak bisa login, sesi langsung keluar)</span>
                 </label>
                 <div>
-                  <p className="text-sm font-semibold text-slate-700 mb-1">Hak akses khusus user ini</p>
-                  <p className="text-xs text-slate-500 mb-2"><b>Peran</b> = ikut centang peran{peranDipilih ? ` "${peranDipilih.nama}"` : ' (tanpa peran = tidak boleh)'}. <b>Izin</b> / <b>Tolak</b> menimpa peran untuk user ini saja.</p>
+                  <div className="flex flex-wrap items-end justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">Hak akses</p>
+                      <p className="text-xs text-slate-500">Tidak dipilih = ikut role{peranDipilih ? ` ${peranDipilih.nama}` : ' (tanpa role = Deny)'}, ditandai garis putus-putus. Klik sekali menyala, klik lagi mati.</p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      {jumlahPilih > 0 && <button type="button" onClick={() => setFormUser(f => ({ ...f, akses: {} }))} className="text-xs font-semibold text-slate-500 hover:text-slate-800 hover:underline">Ikut role semua ({jumlahPilih})</button>}
+                      <Saklar label="Allow all" nyala={semuaAllow(data.menu, efektifUser)}
+                        onChange={on => setFormUser(f => ({ ...f, akses: on ? isiSemua(data.menu, true) : {} }))} />
+                    </div>
+                  </div>
                   <TabelAkses menu={data.menu} render={(menu, aksi) => (
-                    <SelUser nilai={formUser.akses[menu]?.[aksi] ?? null} dariPeran={!!aksesPeranDipilih[menu]?.[aksi]} onChange={v => aturUser(menu, aksi, v)} />
+                    <PilihAkses nilai={formUser.akses[menu]?.[aksi] ?? null} dariRole={!!aksesPeranDipilih[menu]?.[aksi]} onChange={v => aturUser(menu, aksi, v)} />
                   )} />
                 </div>
               </>
@@ -317,19 +338,23 @@ export default function PenggunaPage() {
 
       {/* ---------- Popup peran ---------- */}
       {formPeran && (
-        <Modal judul={formPeran.id ? `Edit peran ${formPeran.nama}` : 'Tambah peran'} onClose={() => setFormPeran(null)} lebar="sm:max-w-2xl">
+        <Modal judul={formPeran.id ? `Edit role ${formPeran.nama}` : 'Tambah role'} onClose={() => setFormPeran(null)} lebar="sm:max-w-4xl">
           <form onSubmit={simpanPeran} className="p-5 sm:p-6 space-y-4">
-            <label className="block text-sm font-semibold text-slate-700">Nama peran
+            <label className="block text-sm font-semibold text-slate-700">Nama role
               <input value={formPeran.nama} onChange={e => setFormPeran({ ...formPeran, nama: e.target.value })} placeholder="contoh: HR, Leader, Finance" className={`${kelasInput} mt-1`} />
             </label>
+            <div className="flex items-end justify-between gap-2">
+              <p className="text-xs text-slate-500">Setiap hak wajib Allow atau Deny. Menu tampil di navbar kalau View = Allow.</p>
+              <Saklar label="Allow all" nyala={semuaAllow(data.menu, (m, x) => !!formPeran.akses[m]?.[x])}
+                onChange={on => setFormPeran(f => ({ ...f, akses: isiSemua(data.menu, on) }))} />
+            </div>
             <TabelAkses menu={data.menu} render={(menu, aksi) => (
-              <Centang nilai={!!formPeran.akses[menu]?.[aksi]} onChange={v => aturPeran(menu, aksi, v)} />
+              <PilihAkses wajib nilai={!!formPeran.akses[menu]?.[aksi]} onChange={v => aturPeran(menu, aksi, v)} />
             )} />
-            <p className="text-xs text-slate-500">Tips: centang View dulu. New / Edit / Delete tanpa View membuat menu tidak tampil di navbar.</p>
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setFormPeran(null)} className="px-4 py-2.5 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200">Batal</button>
               <button type="submit" disabled={sibuk || formPeran.nama.trim().length < 2} className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-40">
-                {sibuk && <Loader2 className="w-4 h-4 animate-spin" />}Simpan peran
+                {sibuk && <Loader2 className="w-4 h-4 animate-spin" />}Simpan role
               </button>
             </div>
           </form>

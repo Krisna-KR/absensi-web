@@ -5,7 +5,7 @@ import { useAkses } from '@/components/AksesAdmin';
 
 const ITEM = [
   { href: '/master', menu: 'master', label: 'Data master', pendek: 'Data', sub: 'Lokasi, departemen, job role', icon: Table2 },
-  { href: '/master/pengguna', menu: 'pengguna', label: 'Pengguna & hak akses', pendek: 'Pengguna', sub: 'User web, peran, centang View/New/Edit/Delete', icon: ShieldCheck },
+  { href: '/master/pengguna', menu: 'pengguna', label: 'Pengguna & hak akses', pendek: 'Pengguna', sub: 'User web, role, Allow/Reject per menu', icon: ShieldCheck },
 ];
 
 // Tab "Master Data" di navbar dengan dropdown (hanya item yang boleh dilihat)

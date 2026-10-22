@@ -119,7 +119,7 @@ export default function AdminLayout({ children }) {
                 <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-sm shadow-sm">{inisial}</div>
                 <div className="hidden 2xl:flex flex-col">
                     <span className="text-slate-900 text-sm font-semibold">{namaTampil}</span>
-                    <span className="text-slate-500 text-xs capitalize">{admin.role}</span>
+                    <span className="text-slate-500 text-xs capitalize">{admin.role === 'tanpa peran' ? 'tanpa role' : admin.role}</span>
                 </div>
             </div>
             <button onClick={logout} disabled={keluar} aria-label="Keluar" title="Keluar" className="flex items-center gap-2 text-slate-500 hover:text-rose-600 transition-colors ml-1 2xl:ml-2 text-sm font-medium disabled:opacity-50">

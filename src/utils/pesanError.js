@@ -23,7 +23,7 @@ export function pesanError(error) {
     TIDAK_BISA_DIRI_SENDIRI: 'Aksi ini tidak bisa dilakukan untuk akunmu sendiri.',
     USERNAME_DIPAKAI: 'Username ini sudah dipakai. Pilih username lain.',
     USERNAME_TIDAK_VALID: 'Username 3–30 karakter, hanya huruf kecil, angka, titik, minus, atau garis bawah.',
-    PERAN_DIPAKAI: 'Nama peran ini sudah ada.',
+    PERAN_DIPAKAI: 'Nama role ini sudah ada.',
     NAMA_KOSONG: 'Isi nama minimal 2 huruf.',
     DATA_TIDAK_ADA: 'Data tidak ditemukan. Muat ulang halaman.',
     AKUN_NONAKTIF: 'Akun ini sudah dinonaktifkan. Hubungi superadmin.',
