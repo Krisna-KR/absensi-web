@@ -9,6 +9,8 @@ const inter = Inter({ subsets: ["latin"], fallback: ["system-ui", "Segoe UI", "R
 export const metadata = {
   title: "Absensi GIFX",
   description: "Sistem absensi karyawan GIFX",
+  // judul & mode layar penuh saat di-install ke layar utama iPhone
+  appleWebApp: { capable: true, title: "Absensi GIFX", statusBarStyle: "default" },
 };
 
 export default function RootLayout({ children }) {
