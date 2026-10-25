@@ -6,6 +6,7 @@ import { pesanError } from '@/utils/pesanError';
 import { formatHariKerja, bandingTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { useFeedback } from '@/components/Feedback';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import MohonTunggu from '@/components/MohonTunggu';
 import { useAkses } from '@/components/AksesAdmin';
 import { useUrutan, urutkan, KolomUrut } from '@/components/TabelSort';
 
@@ -46,15 +47,15 @@ export default function TidakMasuk() {
   const [urut, gantiUrut] = useUrutan({ kunci: 'terakhir', arah: 'asc' });
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat pindah halaman
     (async () => {
-      const { data, error } = await supabase.rpc('fn_tidak_masuk', { p_min_hari: 1 });
-      if (batal) return;
+      const { data, error } = await supabase.rpc('fn_tidak_masuk', { p_min_hari: 1 }).abortSignal(ac.signal);
+      if (ac.signal.aborted) return;
       setMemuat(false);
       if (error) { setGalat(pesanError(error)); setRows([]); return; }
       setGalat(''); setRows(data || []);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [versi]);
 
   const muatUlang = () => { setMemuat(true); setVersi(v => v + 1); };
@@ -143,7 +144,7 @@ export default function TidakMasuk() {
         {galat ? (
           <p className="px-5 py-4 text-sm text-rose-700 bg-rose-50">Daftar belum bisa dimuat. {galat}</p>
         ) : rows === null ? (
-          <div className="px-5 py-4 space-y-2">{[0, 1, 2, 3].map(i => <div key={i} className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: `${70 - i * 10}%` }} />)}</div>
+          <MohonTunggu className="min-h-[14rem]" />
         ) : tampil.length === 0 ? (
           <p className="px-5 py-6 text-sm text-emerald-700 inline-flex items-center gap-2"><CheckCircle2 className="w-4 h-4" />{rows.length === 0 ? 'Semua karyawan masuk. Tidak ada yang bolos hari kerja.' : 'Tidak ada yang cocok dengan filter ini.'}</p>
         ) : (

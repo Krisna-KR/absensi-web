@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, Loader2, LogIn, LogOut } from 'lucide-react';
+import { ChevronDown, LogIn, LogOut } from 'lucide-react';
+import MohonTunggu from '@/components/MohonTunggu';
 import { supabase } from '@/utils/supabase/client';
 import { kodeError } from '@/utils/sesi';
 import { pesanError } from '@/utils/pesanError';
@@ -65,21 +66,21 @@ export default function RiwayatKehadiran({ onSesiHabis }) {
   });
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat pindah tab
     (async () => {
       const [y, m] = hariIni.split('-').map(Number);
       const awal = new Date(Date.UTC(y, m - 1 - (JUMLAH_BULAN - 1), 1));
       const { data, error } = await supabase.rpc('fn_kehadiran_saya', {
         p_mulai: ymd(awal.getUTCFullYear(), awal.getUTCMonth() + 1, 1), p_sampai: hariIni,
-      });
-      if (batal) return;
+      }).abortSignal(ac.signal);
+      if (ac.signal.aborted) return;
       if (error) {
         if (kodeError(error) === 'SESI_HABIS') { sesiHabisRef.current(); return; }
         setGalat(pesanError(error)); setRows([]); return;
       }
       setRows(data || []);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [hariIni]);
 
   const bulan = useMemo(() => {
@@ -118,7 +119,7 @@ export default function RiwayatKehadiran({ onSesiHabis }) {
         <p className="text-sm text-slate-500">{JUMLAH_BULAN} bulan terakhir. Ketuk bulan, lalu minggu, untuk melihat per hari.</p>
       </div>
       {galat && <div className="p-3 rounded-xl text-sm border bg-rose-50 border-rose-200 text-rose-700">Riwayat belum bisa dimuat. {galat}</div>}
-      {rows === null && <div className="py-12 flex justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>}
+      {rows === null && <MohonTunggu className="py-16" />}
       {rows && bulan.length === 0 && !galat && <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-sm text-slate-500">Belum ada riwayat kehadiran.</div>}
 
       <ul className="space-y-3">

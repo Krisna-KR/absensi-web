@@ -9,6 +9,7 @@ import MenuRekap from "@/components/MenuRekap";
 import MenuKehadiran from "@/components/MenuKehadiran";
 import MenuMaster from "@/components/MenuMaster";
 import GantiSandi from "@/components/GantiSandi";
+import MohonTunggu from "@/components/MohonTunggu";
 import { AksesProvider, menuDariPath, HALAMAN_MENU, MENU_AKSES } from "@/components/AksesAdmin";
 import { useFeedback } from "@/components/Feedback";
 import { supabase } from "@/utils/supabase/client";
@@ -27,14 +28,14 @@ export default function AdminLayout({ children }) {
   // Cek sesi & hak akses setiap pindah halaman
   useEffect(() => {
     if (!ambilToken('admin')) { router.replace('/login'); return; }
-    let batal = false;
+    const ac = new AbortController();   // pindah halaman cepat: cek sesi lama dihentikan
     (async () => {
-      const { data } = await supabase.rpc('fn_admin_saya');
-      if (batal) return;
+      const { data } = await supabase.rpc('fn_admin_saya').abortSignal(ac.signal);
+      if (ac.signal.aborted) return;
       if (!data) { hapusToken('admin'); router.replace('/login'); return; }
       setAdmin(data);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [pathname, router, versi]);
 
   const boleh = (menu, aksi = 'lihat') => !!admin && (admin.is_superadmin || !!admin.akses?.[menu]?.[aksi]);
@@ -55,10 +56,7 @@ export default function AdminLayout({ children }) {
 
   if (!admin) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-50 text-slate-500 text-sm">
-        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
-        Memeriksa sesi...
-      </div>
+      <div className="min-h-screen bg-slate-50"><MohonTunggu className="min-h-screen" /></div>
     );
   }
 

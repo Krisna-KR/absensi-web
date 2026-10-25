@@ -4,6 +4,7 @@ import { Search, Send, FileText, Printer, X, Loader2, RotateCcw, PenLine, Refres
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { useFeedback } from '@/components/Feedback';
+import MohonTunggu from '@/components/MohonTunggu';
 import InputRupiah from '@/components/InputRupiah';
 import { useAkses } from '@/components/AksesAdmin';
 import { formatRupiah, rupiahSingkat } from '@/utils/rupiah';
@@ -100,16 +101,16 @@ export default function RekapAllowance() {
   const [dimuatAt, setDimuatAt] = useState(null);   // jam data terakhir diambil
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat ganti periode / pindah halaman
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase.rpc('fn_allowance_daftar', { p_periode: periode });
-      if (batal) return;
+      const { data, error } = await supabase.rpc('fn_allowance_daftar', { p_periode: periode }).abortSignal(ac.signal);
+      if (ac.signal.aborted) return;
       setLoading(false);
       if (error) { setGalat(pesanError(error)); setRows([]); return; }
       setGalat(''); setRows(data || []); setDimuatAt(new Date());
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [periode, versi]);
 
   // Ambil ulang data saja: filter, pencarian, pilihan, dan isian yang belum disimpan tetap
@@ -288,7 +289,7 @@ export default function RekapAllowance() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading && <tr><td colSpan="8" className="px-4 py-12 text-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin inline" /></td></tr>}
+              {loading && <tr><td colSpan="8"><MohonTunggu className="min-h-[14rem]" /></td></tr>}
               {!loading && tampil.length === 0 && <tr><td colSpan="8" className="px-4 py-12 text-center text-slate-500">Tidak ada karyawan yang cocok dengan filter ini.</td></tr>}
               {!loading && tampil.map(r => {
                 const st = STATUS[r.status] || STATUS.BARU;

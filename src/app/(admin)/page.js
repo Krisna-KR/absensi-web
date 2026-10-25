@@ -7,6 +7,7 @@ import { ambilKehadiran, WARNA_STATUS } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { GrafikBatang, Legenda, BatangKomposisi, DaftarBatang } from '@/components/Grafik';
 import HeaderSapaan from '@/components/HeaderSapaan';
+import { PutarTunggu } from '@/components/MohonTunggu';
 
 const PERIODE = [
   { key: 'hari_ini', label: 'Hari ini' },
@@ -142,18 +143,18 @@ export default function Dashboard() {
   const rentang = useMemo(() => rentangDashboard(periode), [periode]);
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat ganti periode / pindah halaman
     (async () => {
       try {
-        const data = await ambilKehadiran({ mulai: rentang.mulai, sampai: rentang.sampai });
-        if (batal) return;
+        const data = await ambilKehadiran({ mulai: rentang.mulai, sampai: rentang.sampai, signal: ac.signal });
+        if (ac.signal.aborted) return;
         setRows(data); setError('');
       } catch (e) {
-        if (!batal) setError(pesanError(e));
+        if (!ac.signal.aborted) setError(pesanError(e));
       }
-      if (!batal) setLoading(false);
+      if (!ac.signal.aborted) setLoading(false);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [rentang]);
 
   const d = useMemo(() => olahData(rows, periode), [rows, periode]);
@@ -190,7 +191,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="col-span-2 lg:col-span-1 rounded-xl p-5 bg-slate-900 text-white shadow-sm flex flex-col justify-between min-h-[132px]">
           <p className="text-sm text-slate-300">Tingkat kehadiran {labelPeriode}</p>
-          {loading ? <div className="h-10 w-24 bg-white/10 rounded animate-pulse" /> : tingkatHadir === null ? (
+          {loading ? <PutarTunggu className="h-10 justify-start" ukuran="w-5 h-5" /> : tingkatHadir === null ? (
             <p className="text-lg font-semibold">{periode === 'hari_ini' ? 'Hari ini libur' : 'Belum ada hari kerja'}</p>
           ) : (
             <p className="text-4xl font-bold tracking-tight">{tingkatHadir.toLocaleString('id-ID')}<span className="text-2xl text-slate-400">%</span></p>
@@ -203,7 +204,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <Icon className="w-4 h-4" style={{ color: WARNA_STATUS[key] }} />{judul}
             </div>
-            {loading ? <div className="h-9 w-16 bg-slate-100 rounded animate-pulse" /> : (
+            {loading ? <PutarTunggu className="h-9 justify-start" ukuran="w-5 h-5" /> : (
               <p className="text-3xl font-bold text-slate-900">{d.kpi[key].toLocaleString('id-ID')}</p>
             )}
             <p className="text-xs text-slate-500 tabular-nums">{loading ? ' ' : `${persen(d.kpi[key]).toLocaleString('id-ID')}% dari hari kerja`}</p>
@@ -214,13 +215,13 @@ export default function Dashboard() {
       {/* Tren + komposisi */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Kartu judul="Tren kehadiran" sub={rentang.keteranganTren} className="lg:col-span-2" aksi={<Legenda seri={SERI} />}>
-          {loading ? <div className="h-[240px] bg-slate-50 rounded-lg animate-pulse" /> : d.tren.length ? (
+          {loading ? <PutarTunggu className="h-[240px]" /> : d.tren.length ? (
             <GrafikBatang data={d.tren} seri={SERI} tinggi={240} />
           ) : <Kosong />}
         </Kartu>
 
         <Kartu judul="Komposisi status" sub={periode === 'hari_ini' ? 'Hari ini' : rentang.label}>
-          {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.totalKpi ? (
+          {loading ? <PutarTunggu className="h-40" /> : d.totalKpi ? (
             <div className="space-y-5">
               <BatangKomposisi bagian={SERI.map(s => ({ ...s, nilai: d.kpi[s.key] }))} />
               <ul className="space-y-3">
@@ -240,21 +241,21 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Kartu judul="Jam absen masuk" sub={`Sebaran per 15 menit, ${rentang.label.toLowerCase()}`}
           aksi={<Legenda seri={[{ key: 'Hadir', label: 'Tepat', warna: WARNA_STATUS.Hadir }, { key: 'Late', label: 'Telat', warna: WARNA_STATUS.Late }]} />}>
-          {loading ? <div className="h-[200px] bg-slate-50 rounded-lg animate-pulse" /> : d.adaJam ? (
+          {loading ? <PutarTunggu className="h-[200px]" /> : d.adaJam ? (
             <GrafikBatang data={d.hist} tinggi={200} garisAcuan={{ setelahIndex: INDEX_BATAS, label: `Batas ${jj(JAM_MASUK)}` }}
               seri={[{ key: 'Hadir', label: 'Tepat waktu', warna: WARNA_STATUS.Hadir }, { key: 'Late', label: 'Terlambat', warna: WARNA_STATUS.Late }]} />
           ) : <Kosong />}
         </Kartu>
 
         <Kartu judul="Ketepatan waktu per tim" sub={`Hari kerja dengan absen masuk sampai ${jj(JAM_MASUK)}, ${rentang.label.toLowerCase()}`}>
-          {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.perTim.length ? (
+          {loading ? <PutarTunggu className="h-40" /> : d.perTim.length ? (
             <DaftarBatang items={d.perTim} warna={WARNA_STATUS.Hadir} maks={100} />
           ) : <Kosong />}
         </Kartu>
 
         <Kartu judul="Paling sering terlambat" sub={rentang.label}
           aksi={<Link href="/kehadiran" className="text-xs font-semibold text-blue-600 hover:text-blue-700 inline-flex items-center gap-1">Rekap <ArrowRight className="w-3 h-3" /></Link>}>
-          {loading ? <div className="h-40 bg-slate-50 rounded-lg animate-pulse" /> : d.topTelat.length ? (
+          {loading ? <PutarTunggu className="h-40" /> : d.topTelat.length ? (
             <DaftarBatang items={d.topTelat} warna={WARNA_STATUS.Late} />
           ) : <Kosong teks="Tidak ada yang terlambat di periode ini." />}
         </Kartu>

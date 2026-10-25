@@ -63,7 +63,8 @@ export function tandaiTim(rows, kepala) {
   });
 }
 
-export async function ambilKehadiran({ mulai, sampai, idKaryawan = null }) {
+// signal: AbortSignal opsional; dibatalkan saat pindah halaman / ganti periode
+export async function ambilKehadiran({ mulai, sampai, idKaryawan = null, signal }) {
   const kepala = ambilJabatanKepala().catch(() => null);
   const hasil = [];
   const ukuran = 1000;
@@ -73,7 +74,8 @@ export async function ambilKehadiran({ mulai, sampai, idKaryawan = null }) {
       .order('tanggal', { ascending: false })
       .order('nama_lengkap', { ascending: true })
       .order('id_karyawan', { ascending: true })
-      .range(dari, dari + ukuran - 1);
+      .range(dari, dari + ukuran - 1)
+      .abortSignal(signal);
     if (error) throw error;
     hasil.push(...(data || []));
     if (!data || data.length < ukuran) break;

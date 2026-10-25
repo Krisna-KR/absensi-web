@@ -5,6 +5,7 @@ import { tanggalWIB, geserTanggal, formatJam, formatTanggalPanjang, formatTangga
 import { ambilKehadiran, ambilAwalData, STATUS_KEHADIRAN, kelompokPerTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import MohonTunggu from '@/components/MohonTunggu';
 
 // Filter status: "Izin/Sakit/Cuti" digabung agar chip tidak terlalu banyak
 const FILTER_STATUS = [
@@ -92,16 +93,17 @@ export default function KehadiranPage() {
   useEffect(() => { let batal = false; ambilAwalData().then(t => { if (!batal) setAwalData(t); }); return () => { batal = true; }; }, []);
 
   useEffect(() => {
-    let batal = false;
+    // Dibatalkan saat tanggal diganti lagi atau pindah halaman
+    const ac = new AbortController();
     (async () => {
       try {
-        const rows = await ambilKehadiran({ mulai: tanggal, sampai: tanggal });
-        if (!batal) { setHasil({ tanggal, rows }); setGalat(''); }
+        const rows = await ambilKehadiran({ mulai: tanggal, sampai: tanggal, signal: ac.signal });
+        if (!ac.signal.aborted) { setHasil({ tanggal, rows }); setGalat(''); }
       } catch (e) {
-        if (!batal) { setGalat(pesanError(e)); setHasil({ tanggal, rows: [] }); }
+        if (!ac.signal.aborted) { setGalat(pesanError(e)); setHasil({ tanggal, rows: [] }); }
       }
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [tanggal]);
 
   const loading = hasil?.tanggal !== tanggal;
@@ -198,13 +200,7 @@ export default function KehadiranPage() {
       {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Data kehadiran belum bisa dimuat. {galat}</div>}
 
       {loading ? (
-        <div className="grid lg:grid-cols-2 2xl:grid-cols-3 gap-4">
-          {[0, 1, 2].map(i => (
-            <div key={i} className="h-[26rem] bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-              {Array.from({ length: 6 }).map((_, j) => <div key={j} className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: `${60 + (j % 3) * 12}%` }} />)}
-            </div>
-          ))}
-        </div>
+        <div className="bg-white border border-slate-200 rounded-xl"><MohonTunggu className="h-[26rem]" /></div>
       ) : semuaLibur && filterStatus === 'semua' ? (
         <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
           <CalendarOff className="w-8 h-8 mx-auto text-slate-300 mb-2" />

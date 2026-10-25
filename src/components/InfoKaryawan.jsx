@@ -1,11 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, MapPin, CalendarPlus, AtSign, Smartphone, LogIn } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MapPin, CalendarPlus, AtSign, Smartphone, LogIn } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { ambilKehadiran, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { tanggalWIB, periodeAbsensi, labelRentang, formatTanggalPanjang, formatTanggal, formatJam } from '@/utils/waktu';
 import Modal from '@/components/Modal';
+import MohonTunggu from '@/components/MohonTunggu';
 
 const KOLOM = 'id, nip, nama_lengkap, username, jabatan, id_departemen, id_atasan, id_lokasi, device_id, is_approved, is_aktif, created_at';
 
@@ -51,36 +52,37 @@ export default function InfoKaryawan({ id, onClose }) {
   const kunciPeriode = `${id}|${periode.mulai}`;
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat popup ditutup
+    const sig = ac.signal;
     (async () => {
-      const { data: kar, error } = await supabase.from('karyawan').select(KOLOM).eq('id', id).maybeSingle();
-      if (batal) return;
+      const { data: kar, error } = await supabase.from('karyawan').select(KOLOM).eq('id', id).maybeSingle().abortSignal(sig);
+      if (sig.aborted) return;
       if (error || !kar) { setGalat(error ? pesanError(error) : 'Karyawan tidak ditemukan.'); return; }
       const [d, a, l, t] = await Promise.all([
-        kar.id_departemen ? supabase.from('master_departemen').select('nama_departemen').eq('id', kar.id_departemen).maybeSingle() : { data: null },
-        kar.id_atasan ? supabase.from('karyawan').select('nama_lengkap').eq('id', kar.id_atasan).maybeSingle() : { data: null },
-        kar.id_lokasi ? supabase.from('master_lokasi').select('nama_cabang').eq('id', kar.id_lokasi).maybeSingle() : { data: null },
+        kar.id_departemen ? supabase.from('master_departemen').select('nama_departemen').eq('id', kar.id_departemen).maybeSingle().abortSignal(sig) : { data: null },
+        kar.id_atasan ? supabase.from('karyawan').select('nama_lengkap').eq('id', kar.id_atasan).maybeSingle().abortSignal(sig) : { data: null },
+        kar.id_lokasi ? supabase.from('master_lokasi').select('nama_cabang').eq('id', kar.id_lokasi).maybeSingle().abortSignal(sig) : { data: null },
         supabase.from('absensi').select('tanggal, waktu_masuk, waktu_keluar, status').eq('id_karyawan', id)
-          .or('waktu_masuk.not.is.null,waktu_keluar.not.is.null').order('tanggal', { ascending: false }).limit(1).maybeSingle(),
+          .or('waktu_masuk.not.is.null,waktu_keluar.not.is.null').order('tanggal', { ascending: false }).limit(1).maybeSingle().abortSignal(sig),
       ]);
-      if (batal) return;
+      if (sig.aborted) return;
       setInfo({ kar, dept: d.data?.nama_departemen || null, atasan: a.data?.nama_lengkap || null, lokasi: l.data?.nama_cabang || null, terakhir: t.data || null });
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [id]);
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat ganti periode / popup ditutup
     (async () => {
       try {
         const sampai = periode.sampai < hariIni ? periode.sampai : hariIni;
-        const rows = periode.mulai > hariIni ? [] : await ambilKehadiran({ mulai: periode.mulai, sampai, idKaryawan: id });
-        if (!batal) setRekap({ key: kunciPeriode, c: ringkas(rows, hariIni) });
+        const rows = periode.mulai > hariIni ? [] : await ambilKehadiran({ mulai: periode.mulai, sampai, idKaryawan: id, signal: ac.signal });
+        if (!ac.signal.aborted) setRekap({ key: kunciPeriode, c: ringkas(rows, hariIni) });
       } catch (e) {
-        if (!batal) setRekap({ key: kunciPeriode, galat: pesanError(e) });
+        if (!ac.signal.aborted) setRekap({ key: kunciPeriode, galat: pesanError(e) });
       }
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [kunciPeriode, id, periode.mulai, periode.sampai, hariIni]);
 
   const kar = info?.kar;
@@ -92,7 +94,7 @@ export default function InfoKaryawan({ id, onClose }) {
     <Modal judul={kar ? kar.nama_lengkap : 'Info karyawan'} onClose={onClose} lebar="sm:max-w-lg" tutupDiLuar>
       <div className="p-5 sm:p-6 space-y-5">
         {galat ? <p className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg p-3">{galat}</p>
-        : !info ? <div className="py-10 flex justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
+        : !info ? <MohonTunggu className="py-10" />
         : (
           <>
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -142,7 +144,7 @@ export default function InfoKaryawan({ id, onClose }) {
                 <button type="button" onClick={() => setGeser(g => g + 1)} disabled={geser >= 0} aria-label="Periode berikutnya" className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
               </div>
               {!rekapSiap ? (
-                <div className="py-8 flex justify-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
+                <MohonTunggu className="py-8" />
               ) : rekap.galat ? (
                 <p className="p-3 text-sm text-rose-700">{rekap.galat}</p>
               ) : (

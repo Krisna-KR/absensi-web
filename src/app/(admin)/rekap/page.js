@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Printer, Users, Briefcase, Megaphone, MapPin, Crown, Table2, Network } from 'lucide-react';
+import { Printer, Users, Briefcase, Megaphone, MapPin, Crown, Table2, Network, ChevronDown } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { formatTanggal, tanggalWIB } from '@/utils/waktu';
 import BaganStruktur from '@/components/BaganStruktur';
+import MohonTunggu from '@/components/MohonTunggu';
 
 const LABEL_DIVISI = {
   Marketing: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -21,18 +22,24 @@ function Kartu({ icon: Icon, judul, nilai, sub }) {
   );
 }
 
+// Satu bagian (Backoffice / satu tim). Bisa ditutup di layar; saat dicetak selalu tampil semua.
 function TabelGrup({ judul, sub, aksen, baris }) {
+  const [terbuka, setTerbuka] = useState(true);
   return (
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden break-inside-avoid print:shadow-none">
-      <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-100 relative">
+      <button type="button" onClick={() => setTerbuka(v => !v)} aria-expanded={terbuka}
+        className={`w-full text-left flex items-center justify-between gap-3 px-5 py-3 relative hover:bg-slate-50/70 ${terbuka ? 'border-b border-slate-100' : 'print:border-b print:border-slate-100'}`}>
         <span className="absolute left-0 top-0 bottom-0 w-1" style={{ background: aksen }} />
-        <div>
-          <h2 className="font-semibold text-slate-900">{judul}</h2>
-          {sub && <p className="text-xs text-slate-500">{sub}</p>}
-        </div>
-        <span className="text-xs font-semibold text-slate-500 bg-slate-100 rounded-full px-2.5 py-1 tabular-nums">{baris.length} orang</span>
-      </div>
-      <div className="overflow-x-auto">
+        <span className="flex items-center gap-2 min-w-0">
+          <ChevronDown aria-hidden="true" className={`w-4 h-4 shrink-0 text-slate-400 transition-transform print:hidden ${terbuka ? '' : '-rotate-90'}`} />
+          <span className="min-w-0">
+            <span className="block font-semibold text-slate-900">{judul}</span>
+            {sub && <span className="block text-xs text-slate-500">{sub}</span>}
+          </span>
+        </span>
+        <span className="text-xs font-semibold text-slate-500 bg-slate-100 rounded-full px-2.5 py-1 tabular-nums shrink-0">{baris.length} orang</span>
+      </button>
+      <div className={`overflow-x-auto ${terbuka ? '' : 'hidden print:block'}`}>
         <table className="w-full text-sm text-left text-slate-600 min-w-[640px]">
           <thead className="text-xs text-slate-500 bg-slate-50">
             <tr>
@@ -75,21 +82,21 @@ export default function RekapPage() {
   const [tampilan, setTampilan] = useState('tabel');   // 'tabel' | 'bagan'
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat pindah halaman
     (async () => {
       const [k, d, l, j] = await Promise.all([
-        supabase.from('karyawan').select('id, nip, nama_lengkap, jabatan, id_departemen, id_atasan, id_lokasi').eq('is_aktif', true).eq('is_approved', true).order('nama_lengkap'),
-        supabase.from('master_departemen').select('id, nama_departemen'),
-        supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang'),
-        supabase.from('master_jabatan').select('nama, bisa_jadi_atasan'),
+        supabase.from('karyawan').select('id, nip, nama_lengkap, jabatan, id_departemen, id_atasan, id_lokasi').eq('is_aktif', true).eq('is_approved', true).order('nama_lengkap').abortSignal(ac.signal),
+        supabase.from('master_departemen').select('id, nama_departemen').abortSignal(ac.signal),
+        supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang').abortSignal(ac.signal),
+        supabase.from('master_jabatan').select('nama, bisa_jadi_atasan').abortSignal(ac.signal),
       ]);
-      if (batal) return;
+      if (ac.signal.aborted) return;
       const e = [k, d, l, j].find(r => r.error)?.error;
       if (e) setGalat(pesanError(e));
       setData({ karyawan: k.data || [], departemen: d.data || [], lokasi: l.data || [], jabatan: j.data || [] });
       setLoading(false);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, []);
 
   const laporan = useMemo(() => {
@@ -150,7 +157,7 @@ export default function RekapPage() {
       {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Laporan belum bisa dimuat. {galat}</div>}
 
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-24 bg-white rounded-xl border border-slate-200 animate-pulse" />)}</div>
+        <div className="bg-white rounded-xl border border-slate-200"><MohonTunggu className="min-h-[18rem]" /></div>
       ) : tampilan === 'bagan' ? (
         <BaganStruktur semua={laporan.semua} atasanRole={laporan.atasanRole} idLokasi={filterLokasi} />
       ) : (

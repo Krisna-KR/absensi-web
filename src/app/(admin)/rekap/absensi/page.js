@@ -7,6 +7,7 @@ import { pesanError } from '@/utils/pesanError';
 import { buatXlsx, unduhBlob } from '@/utils/xlsx';
 import { useFeedback } from '@/components/Feedback';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import MohonTunggu from '@/components/MohonTunggu';
 
 const IZIN = ['Izin', 'Sakit', 'Cuti'];
 const FILTER_STATUS = [
@@ -68,17 +69,18 @@ export default function RekapAbsensiPage() {
 
   useEffect(() => {
     if (!valid) return;
-    let batal = false;
+    // Dibatalkan saat periode diganti lagi atau pindah halaman: request lama langsung dihentikan
+    const ac = new AbortController();
     (async () => {
       try {
         const akhir = sampai < hariIni ? sampai : hariIni;
-        const rows = mulai > hariIni ? [] : await ambilKehadiran({ mulai, sampai: akhir });
-        if (!batal) { setHasil({ kunci, rows }); setGalat(''); }
+        const rows = mulai > hariIni ? [] : await ambilKehadiran({ mulai, sampai: akhir, signal: ac.signal });
+        if (!ac.signal.aborted) { setHasil({ kunci, rows }); setGalat(''); }
       } catch (e) {
-        if (!batal) { setGalat(pesanError(e)); setHasil({ kunci, rows: [] }); }
+        if (!ac.signal.aborted) { setGalat(pesanError(e)); setHasil({ kunci, rows: [] }); }
       }
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [kunci, mulai, sampai, valid, hariIni]);
 
   const loading = valid && hasil?.kunci !== kunci;
@@ -317,9 +319,7 @@ export default function RekapAbsensiPage() {
       </div>
 
       {loading ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
-          {Array.from({ length: 6 }).map((_, j) => <div key={j} className="h-4 bg-slate-100 rounded animate-pulse" style={{ width: `${60 + (j % 3) * 12}%` }} />)}
-        </div>
+        <div className="bg-white border border-slate-200 rounded-xl"><MohonTunggu className="min-h-[18rem]" /></div>
       ) : perHari.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500">
           <CalendarRange className="w-8 h-8 mx-auto text-slate-300 mb-2" />

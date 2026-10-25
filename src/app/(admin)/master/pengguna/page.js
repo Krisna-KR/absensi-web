@@ -7,6 +7,7 @@ import { formatTanggalPanjang, tanggalWIB } from '@/utils/waktu';
 import { useFeedback } from '@/components/Feedback';
 import { useAkses, LABEL_AKSI, SEMUA_AKSI } from '@/components/AksesAdmin';
 import Modal from '@/components/Modal';
+import MohonTunggu from '@/components/MohonTunggu';
 
 const SANDI_AWAL = 'admin123';
 const kelasInput = 'w-full px-3 py-2 border border-slate-200 rounded-lg text-base sm:text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-500';
@@ -91,14 +92,14 @@ export default function PenggunaPage() {
   const [sibuk, setSibuk] = useState(false);
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat pindah halaman
     (async () => {
-      const { data: d, error } = await supabase.rpc('fn_pengguna_daftar');
-      if (batal) return;
+      const { data: d, error } = await supabase.rpc('fn_pengguna_daftar').abortSignal(ac.signal);
+      if (ac.signal.aborted) return;
       if (error) { setGalat(pesanError(error)); setData({ menu: [], pengguna: [], peran: [] }); return; }
       setGalat(''); setData(d);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [versi]);
   const muatUlang = () => { setVersi(v => v + 1); muatUlangAkses(); };
 
@@ -168,7 +169,7 @@ export default function PenggunaPage() {
     toast(`Role ${p.nama} dihapus.`); muatUlang();
   };
 
-  if (!data) return <div className="py-20 flex justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>;
+  if (!data) return <div className="bg-white rounded-xl border border-slate-200"><MohonTunggu className="min-h-[18rem]" /></div>;
   const peranDipilih = formUser ? peranById[formUser.id_peran] : null;
   const aksesPeranDipilih = petaAkses(peranDipilih?.akses);
   const jumlahPilih = formUser ? data.menu.reduce((n, m) => n + m.aksi.filter(x => formUser.akses[m.menu]?.[x] != null).length, 0) : 0;

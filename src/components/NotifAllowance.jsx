@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Wallet, PenLine, Loader2, Eye, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Wallet, PenLine, Eye, Info } from 'lucide-react';
+import MohonTunggu from '@/components/MohonTunggu';
 import { supabase } from '@/utils/supabase/client';
 import { kodeError } from '@/utils/sesi';
 import { pesanError } from '@/utils/pesanError';
@@ -20,11 +21,12 @@ const PESAN = {
  * Tab Notif di HP: daftar slip allowance yang dikirim admin.
  * Tanda tangan dibuat sekali di sini; menggantinya hanya lewat admin (web).
  * items  : hasil fn_allowance_saya
+ * dimuat : false = daftar masih diambil pertama kali
  * muat   : muat ulang daftar
  * punyaTtd / setPunyaTtd : status tanda tangan karyawan
  * onSesiHabis : dipanggil kalau sesi berakhir
  */
-export default function NotifAllowance({ items, muat, punyaTtd, setPunyaTtd, onSesiHabis, konfirmasi }) {
+export default function NotifAllowance({ items, dimuat = true, muat, punyaTtd, setPunyaTtd, onSesiHabis, konfirmasi }) {
   const [idBuka, setIdBuka] = useState(null);
   const [mode, setMode] = useState(null);          // null | 'buat_ttd' | 'lihat_ttd'
   const [ttdSaya, setTtdSaya] = useState(undefined);
@@ -101,7 +103,7 @@ export default function NotifAllowance({ items, muat, punyaTtd, setPunyaTtd, onS
         <h2 className="text-xl font-black text-slate-900">Tanda tanganku</h2>
         {kotakPesan}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 flex items-center justify-center min-h-40">
-          {ttdSaya === undefined ? <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+          {ttdSaya === undefined ? <MohonTunggu className="py-0" />
             /* eslint-disable-next-line @next/next/no-img-element */
             : ttdSaya ? <img src={ttdSaya} alt="Tanda tanganku" className="max-h-32 max-w-full object-contain" />
             : <p className="text-sm text-slate-500">Belum ada tanda tangan.</p>}
@@ -163,7 +165,9 @@ export default function NotifAllowance({ items, muat, punyaTtd, setPunyaTtd, onS
           <ChevronRight className="w-5 h-5 text-amber-400" />
         </button>
       )}
-      {items.length === 0 ? (
+      {!dimuat && items.length === 0 ? (
+        <MohonTunggu className="py-16" />
+      ) : items.length === 0 ? (
         <div className="bg-white rounded-3xl border border-slate-200 p-8 text-center text-sm text-slate-500">Belum ada notifikasi allowance.</div>
       ) : (
         <ul className="space-y-3">

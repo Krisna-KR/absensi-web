@@ -12,6 +12,7 @@ import PadTtd from '@/components/PadTtd';
 import { formatRupiah } from '@/utils/rupiah';
 import Modal from '@/components/Modal';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import MohonTunggu from '@/components/MohonTunggu';
 import { useAkses } from '@/components/AksesAdmin';
 
 const FORM_KOSONG = { nama_lengkap: '', dept: '', id_atasan: '', jabatan: '', id_lokasi: '', pakaiKhusus: false, allowance_khusus: null };
@@ -122,7 +123,7 @@ export default function KaryawanPage() {
   const { boleh } = useAkses();
   const bisa = { tambah: boleh('karyawan', 'tambah'), ubah: boleh('karyawan', 'ubah'), hapus: boleh('karyawan', 'hapus') };
   const [cari, setCari] = useState('');
-  const [filterTim, setFilterTim] = useState('semua');   // chip divisi/tim
+  const [filterTim, setFilterTim] = useState([]);   // chip divisi/tim yang dipilih (boleh banyak); kosong = Semua
   const [urut, gantiUrut] = useUrutan({ kunci: 'nama', arah: 'asc' });
 
   // Modal Tambah/Edit Karyawan
@@ -142,22 +143,25 @@ export default function KaryawanPage() {
   const [idInfo, setIdInfo] = useState(null);     // popup info karyawan
 
   const [versi, setVersi] = useState(0);
+  const [dimuat, setDimuat] = useState(false);   // data pertama sudah datang
   const fetchData = () => setVersi(v => v + 1); // muat ulang data
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat pindah halaman
+    const sig = ac.signal;
     (async () => {
       const [{ data: deptData }, { data: jabData }, { data: lokData }, { data: karData, error }] = await Promise.all([
-        supabase.from('master_departemen').select('id, nama_departemen, allowance_flat'),
-        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama'),
-        supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang'),
-        supabase.from('karyawan').select(KOLOM_KARYAWAN).order('created_at', { ascending: false }),
+        supabase.from('master_departemen').select('id, nama_departemen, allowance_flat').abortSignal(sig),
+        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama').abortSignal(sig),
+        supabase.from('master_lokasi').select('id, nama_cabang').order('nama_cabang').abortSignal(sig),
+        supabase.from('karyawan').select(KOLOM_KARYAWAN).order('created_at', { ascending: false }).abortSignal(sig),
       ]);
-      if (batal) return;
+      if (sig.aborted) return;
       if (error) toast(`Data karyawan belum bisa dimuat. ${pesanError(error)}`, 'gagal');
       setDepartemen(deptData || []); setJabatanList(jabData || []); setLokasiList(lokData || []); setKaryawan(karData || []);
+      setDimuat(true);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [versi, toast]);
 
   // =================== HELPER STRUKTUR ===================
@@ -196,19 +200,21 @@ export default function KaryawanPage() {
     }
     return [...peta.values()].sort(bandingTim);
   }, [karyawan, timKar, lihatNonaktif]);
-  const timAktif = opsiTim.some(t => t.key === filterTim) ? filterTim : 'semua';
+  // Pilihan yang masih ada di tab Aktif/Nonaktif saat ini; kosong = Semua
+  const timDipilih = useMemo(() => new Set(filterTim.filter(key => opsiTim.some(t => t.key === key))), [filterTim, opsiTim]);
+  const pilihTim = (key) => setFilterTim(prev => key === 'semua' ? [] : prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
   // Pencarian & urutan tabel
   const daftarTampil = useMemo(() => {
     const q = cari.trim().toLowerCase();
     const namaAtasan = (k) => karById[k.id_atasan]?.nama_lengkap || '';
-    const sesuaiStatus = karyawan.filter(k => (lihatNonaktif ? !k.is_aktif : k.is_aktif) && (timAktif === 'semua' || timKar[k.id]?.key === timAktif));
+    const sesuaiStatus = karyawan.filter(k => (lihatNonaktif ? !k.is_aktif : k.is_aktif) && (timDipilih.size === 0 || timDipilih.has(timKar[k.id]?.key)));
     const rows = q ? sesuaiStatus.filter(k => [k.nama_lengkap, k.nip, k.username, namaAtasan(k), k.jabatan, lokasiById[k.id_lokasi]].some(v => v?.toLowerCase().includes(q))) : sesuaiStatus;
     return urutkan(rows, urut, {
       nama: k => k.nama_lengkap,
       struktur: k => `${deptById[k.id_departemen] || 'zzz'} ${k.jabatan || ''} ${namaAtasan(k)}`,
       akun: k => (!k.is_approved ? 0 : k.device_id ? 1 : 2),
     });
-  }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif, timAktif, timKar]);
+  }, [karyawan, cari, urut, karById, deptById, lokasiById, lihatNonaktif, timDipilih, timKar]);
 
   // Yang boleh membawahi Marketing: job role tercentang "bisa jadi atasan" (Business Manager, Branch Manager, Vice President)
   const bisaMembawahi = (k) => jabatanAtasan.has(k.jabatan);
@@ -538,12 +544,12 @@ export default function KaryawanPage() {
 
       <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {opsiTim.length > 0 && (
-          <div className="flex gap-1.5 px-4 py-3 border-b border-slate-100 overflow-x-auto scrollbar-hide sm:flex-wrap" role="tablist" aria-label="Divisi / tim">
+          <div className="flex gap-1.5 px-4 py-3 border-b border-slate-100 overflow-x-auto scrollbar-hide sm:flex-wrap" role="group" aria-label="Filter divisi / tim (boleh pilih lebih dari satu)">
             {[{ key: 'semua', nama: 'Semua', n: lihatNonaktif ? jumlahNonaktif : jumlahAktif }, ...opsiTim].map(t => {
-              const aktif = timAktif === t.key;
+              const aktif = t.key === 'semua' ? timDipilih.size === 0 : timDipilih.has(t.key);
               const titik = t.divisi === 'Marketing' ? (t.nama === 'Marketing tanpa atasan' ? 'bg-rose-500' : 'bg-emerald-500') : t.divisi === 'Backoffice' ? 'bg-blue-500' : 'bg-rose-500';
               return (
-                <button key={t.key} role="tab" aria-selected={aktif} onClick={() => setFilterTim(t.key)}
+                <button key={t.key} type="button" aria-pressed={aktif} onClick={() => pilihTim(t.key)}
                   className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border font-semibold whitespace-nowrap transition-colors ${aktif ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
                   {t.key !== 'semua' && <span className={`w-2 h-2 rounded-full ${aktif ? 'bg-white' : titik}`} />}
                   {t.nama}
@@ -565,7 +571,7 @@ export default function KaryawanPage() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {daftarTampil.length === 0 && (
-                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{cari ? `Tidak ada karyawan yang cocok dengan "${cari}"${timAktif !== 'semua' ? ' di kelompok ini' : ''}.` : lihatNonaktif ? 'Tidak ada karyawan nonaktif.' : 'Belum ada karyawan.'}</td></tr>
+                <tr><td colSpan="4" className="px-6 py-16 text-center text-slate-500">{!dimuat ? <MohonTunggu className="py-0" /> : cari ? `Tidak ada karyawan yang cocok dengan "${cari}"${timDipilih.size ? ' di kelompok yang dipilih' : ''}.` : lihatNonaktif ? 'Tidak ada karyawan nonaktif.' : 'Belum ada karyawan.'}</td></tr>
               )}
               {daftarTampil.map((kar) => {
                 const dept = namaDept(kar);
@@ -635,7 +641,7 @@ export default function KaryawanPage() {
         </div>
         {karyawan.length > 0 && (
           <div className="px-6 py-3 border-t border-slate-100 text-sm text-slate-500 tabular-nums">
-            {`${daftarTampil.length} karyawan ${lihatNonaktif ? 'nonaktif' : 'aktif'}${timAktif !== 'semua' ? ` · ${opsiTim.find(t => t.key === timAktif)?.nama}` : ''}`}
+            {`${daftarTampil.length} karyawan ${lihatNonaktif ? 'nonaktif' : 'aktif'}${timDipilih.size === 0 ? '' : timDipilih.size <= 2 ? ` · ${opsiTim.filter(t => timDipilih.has(t.key)).map(t => t.nama).join(', ')}` : ` · ${timDipilih.size} kelompok`}`}
           </div>
         )}
       </div>

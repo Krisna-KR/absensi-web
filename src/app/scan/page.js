@@ -11,6 +11,7 @@ import { pesanError } from '@/utils/pesanError';
 import { ambilToken, simpanToken, hapusToken, kodeError } from '@/utils/sesi';
 import { useFeedback } from '@/components/Feedback';
 import GantiSandi from '@/components/GantiSandi';
+import MohonTunggu from '@/components/MohonTunggu';
 import Image from 'next/image';
 
 // Pesan untuk kode error dari fungsi database (fn_login_karyawan, fn_absen, ...)
@@ -57,6 +58,9 @@ export default function MobileScannerPage() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [karyawan, setKaryawan] = useState(null);
   const [todayAbsen, setTodayAbsen] = useState(null);
+  const [memuatSesi, setMemuatSesi] = useState(true);         // cek sesi tersimpan saat halaman dibuka
+  const [hariIniDimuat, setHariIniDimuat] = useState(false);  // status & rekap hari ini sudah datang
+  const [allowanceDimuat, setAllowanceDimuat] = useState(false);
   const [rekap, setRekap] = useState({ masuk: 0, izin: 0, telat: 0, bolos: 0 });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
@@ -99,6 +103,7 @@ export default function MobileScannerPage() {
     hapusToken('karyawan');
     try { localStorage.removeItem('karyawan_data'); } catch { /* abaikan */ }
     setKaryawan(null); setTodayAbsen(null); setStep(1); setTab('home'); setAllowance([]);
+    setHariIniDimuat(false); setAllowanceDimuat(false);
     if (pesan) info({ judul: 'Silakan login lagi', pesan });
   };
 
@@ -108,6 +113,7 @@ export default function MobileScannerPage() {
     if (error) {
       if (kodeError(error) === 'SESI_HABIS') { keluarSesi('Admin melepas HP ini atau menonaktifkan akunmu. Login lagi kalau akunmu masih aktif.'); return; }
       setMessage(`Data absensimu belum bisa dimuat. ${pesanError(error)}`);
+      setHariIniDimuat(true);
       return;
     }
     const rows = data || [];
@@ -115,15 +121,17 @@ export default function MobileScannerPage() {
     setTodayAbsen(rows.find(r => String(r.tanggal).slice(0, 10) === hariIni) || null);
     const c = hitungStatus(rows);
     setRekap({ masuk: c.Hadir + c.Late, izin: c.Izin + c.Sakit + c.Cuti, telat: c.Late, bolos: c.Bolos });
+    setHariIniDimuat(true);
   };
 
   const fetchAllowance = async () => {
     const { data, error } = await supabase.rpc('fn_allowance_saya');
     if (error) {
-      if (kodeError(error) === 'SESI_HABIS') keluarSesi('Sesimu berakhir. Login lagi.');
+      if (kodeError(error) === 'SESI_HABIS') { keluarSesi('Sesimu berakhir. Login lagi.'); return; }
+      setAllowanceDimuat(true);
       return;
     }
-    setAllowance(data || []);
+    setAllowance(data || []); setAllowanceDimuat(true);
   };
 
   // Cek notifikasi allowance tiap 1 menit selama aplikasi terbuka
@@ -138,8 +146,9 @@ export default function MobileScannerPage() {
   useEffect(() => {
     // Lanjutkan sesi yang tersimpan di HP
     const checkSesi = async () => {
-      if (!ambilToken('karyawan')) return;
+      if (!ambilToken('karyawan')) { setMemuatSesi(false); return; }
       const { data, error } = await supabase.rpc('fn_sesi_karyawan');
+      setMemuatSesi(false);
       if (error || !data) { keluarSesi(); return; }
       setKaryawan(data); setStep(2); fetchDataHariIni(); fetchAllowance();
     };
@@ -370,8 +379,11 @@ export default function MobileScannerPage() {
           </div>
         )}
 
+        {/* Membuka sesi yang tersimpan di HP */}
+        {step === 1 && memuatSesi && <MohonTunggu className="flex-1" />}
+
         {/* FASE 1: LOGIN */}
-        {step === 1 && (
+        {step === 1 && !memuatSesi && (
           <div className="flex-1 flex flex-col justify-center p-6">
             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-slate-200">
                <Lock className="w-10 h-10 text-blue-600" />
@@ -396,7 +408,7 @@ export default function MobileScannerPage() {
 
         {/* FASE 2: NOTIFIKASI ALLOWANCE */}
         {step === 2 && tab === 'notif' && (
-          <NotifAllowance items={allowance} muat={fetchAllowance} konfirmasi={konfirmasi}
+          <NotifAllowance items={allowance} dimuat={allowanceDimuat} muat={fetchAllowance} konfirmasi={konfirmasi}
             punyaTtd={!!karyawan?.punya_ttd} setPunyaTtd={(v) => setKaryawan(k => ({ ...k, punya_ttd: v }))}
             onSesiHabis={() => keluarSesi('Sesimu berakhir. Login lagi.')} />
         )}
@@ -422,6 +434,7 @@ export default function MobileScannerPage() {
                </button>
              )}
 
+             {!hariIniDimuat ? <MohonTunggu className="w-full flex-1 py-24" /> : (<>
              <div className="w-full bg-white rounded-3xl p-6 border border-slate-200 shadow-sm mb-12">
                <div className="text-center mb-6">
                  <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-1">Status Hari Ini</p>
@@ -474,6 +487,7 @@ export default function MobileScannerPage() {
                    <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100"><p className="text-[10px] text-slate-400 mb-1">Alpha</p><p className="text-rose-600 text-base">{rekap.bolos}</p></div>
                 </div>
              </div>
+             </>)}
           </div>
         )}
 

@@ -40,20 +40,21 @@ export default function MasterDataPage() {
   const [simpan, setSimpan] = useState(false);
 
   useEffect(() => {
-    let batal = false;
+    const ac = new AbortController();   // dihentikan saat pindah halaman
+    const sig = ac.signal;
     (async () => {
       const [l, d, j, k] = await Promise.all([
-        supabase.from('master_lokasi').select('id, nama_cabang, alamat').order('nama_cabang'),
-        supabase.from('master_departemen').select('id, nama_departemen, allowance_flat').order('nama_departemen'),
-        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama'),
-        supabase.from('karyawan').select('id, id_lokasi, id_departemen, jabatan, is_aktif'),
+        supabase.from('master_lokasi').select('id, nama_cabang, alamat').order('nama_cabang').abortSignal(sig),
+        supabase.from('master_departemen').select('id, nama_departemen, allowance_flat').order('nama_departemen').abortSignal(sig),
+        supabase.from('master_jabatan').select('nama, id_departemen, bisa_jadi_atasan, allowance, pakai_shift').order('nama').abortSignal(sig),
+        supabase.from('karyawan').select('id, id_lokasi, id_departemen, jabatan, is_aktif').abortSignal(sig),
       ]);
-      if (batal) return;
+      if (sig.aborted) return;
       const galat = [l, d, j, k].find(r => r.error)?.error;
       if (galat) toast(`Master data belum bisa dimuat. ${pesanError(galat)}`, 'gagal');
       setLokasi(l.data || []); setDepartemen(d.data || []); setJabatan(j.data || []); setKaryawan(k.data || []);
     })();
-    return () => { batal = true; };
+    return () => ac.abort();
   }, [versi, toast]);
 
   const aktif = karyawan.filter(k => k.is_aktif);
