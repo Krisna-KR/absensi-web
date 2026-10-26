@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { Users, Clock, CalendarDays, UserX, ArrowRight, ChevronUp, UsersRound } from 'lucide-react';
+import { Users, Clock, CalendarDays, UserX, ArrowRight, UsersRound } from 'lucide-react';
 import { rentangPeriode, tanggalWIB, geserTanggal, formatTanggal, jamMenitWIB, NAMA_BULAN } from '@/utils/waktu';
 import { ambilKehadiran, WARNA_STATUS, namaTim, TANPA_ATASAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
@@ -171,7 +171,6 @@ export default function Dashboard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [timTerbuka, setTimTerbuka] = useState(true);   // rincian hadir per tim di kartu gelap
   const rentang = useMemo(() => rentangDashboard(periode), [periode]);
 
   useEffect(() => {
@@ -219,41 +218,42 @@ export default function Dashboard() {
 
       {error && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Ringkasan belum bisa dimuat. {error}</div>}
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="col-span-2 lg:col-span-1 rounded-xl p-5 bg-slate-900 text-white shadow-sm flex flex-col gap-3 min-h-[132px]">
-          <div className="flex items-start justify-between gap-2">
+      {/* KPI: kartu hadir selebar 2 kolom (angka di kiri, rincian per tim di kanan) + 4 kartu status */}
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="col-span-2 rounded-xl p-5 bg-slate-900 text-white shadow-sm flex flex-col sm:flex-row gap-4 sm:gap-5 min-h-[132px]">
+          <div className="sm:w-36 shrink-0 flex flex-col justify-between gap-2">
             <p className="text-sm text-slate-300 inline-flex items-center gap-2"><UsersRound className="w-4 h-4" />Hadir {labelPeriode}</p>
-            {!loading && d.perTimHadir.length > 0 && (
-              <button type="button" onClick={() => setTimTerbuka(v => !v)} aria-expanded={timTerbuka}
-                aria-label={timTerbuka ? 'Sembunyikan rincian per tim' : 'Tampilkan rincian per tim'}
-                className="w-7 h-7 -mt-1 -mr-1 rounded-lg border border-white/15 text-slate-300 hover:bg-white/10 flex items-center justify-center shrink-0">
-                <ChevronUp className={`w-4 h-4 transition-transform ${timTerbuka ? '' : 'rotate-180'}`} />
-              </button>
-            )}
-          </div>
-          {loading ? <PutarTunggu className="h-10 justify-start" ukuran="w-5 h-5" /> : !d.ringkasHadir.total ? (
-            <>
+            {loading ? <PutarTunggu className="h-10 justify-start" ukuran="w-5 h-5" /> : !d.ringkasHadir.total ? (
               <p className="text-lg font-semibold">{periode === 'hari_ini' ? 'Hari ini libur' : 'Belum ada hari kerja'}</p>
-              <p className="text-xs text-slate-400">Sabtu, Minggu, dan tanggal merah tidak dihitung</p>
-            </>
-          ) : (
-            <>
-              <div>
-                <p className="text-4xl font-bold tracking-tight tabular-nums">{d.ringkasHadir.hadir.toLocaleString('id-ID')}<span className="text-lg font-semibold text-slate-400"> / {d.ringkasHadir.total.toLocaleString('id-ID')}</span></p>
-                <p className="text-xs text-slate-400 mt-0.5">{harian ? 'Karyawan hadir hari ini' : 'Rata-rata hadir per hari kerja'}</p>
-              </div>
-              {timTerbuka && (
-                <ul className="grid grid-cols-2 gap-1.5">
-                  {d.perTimHadir.map(t => (
-                    <li key={t.key} title={`${t.nama}: ${t.hadir} dari ${t.total}${harian ? '' : ' (rata-rata per hari kerja)'}`} className="flex items-center justify-between gap-1 rounded-lg bg-white/[0.07] border border-white/10 px-2 py-1.5 text-xs">
-                      <span className="truncate text-slate-300">{t.pendek}</span>
-                      <span className="tabular-nums"><b className="text-white">{t.hadir}</b><span className="text-slate-500">/{t.total}</span></span>
-                    </li>
-                  ))}
-                </ul>
+            ) : (
+              <p className="text-[2.75rem] sm:text-5xl leading-none font-extrabold tracking-tight tabular-nums">{d.ringkasHadir.hadir.toLocaleString('id-ID')}<span className="text-lg sm:text-xl font-semibold tracking-normal text-slate-400"> / {d.ringkasHadir.total.toLocaleString('id-ID')}</span></p>
+            )}
+            <p className="text-xs text-slate-400">
+              {loading ? ' ' : !d.ringkasHadir.total ? 'Sabtu, Minggu, dan tanggal merah tidak dihitung'
+                : harian ? `${(d.ringkasHadir.total - d.ringkasHadir.hadir).toLocaleString('id-ID')} belum hadir` : 'Rata-rata per hari kerja'}
+            </p>
+          </div>
+          {!loading && d.ringkasHadir.total > 0 && d.perTimHadir.length > 0 && (
+            // Desktop: s.d. 8 tim 2 kolom, 9-12 tim 3 kolom, > 12 tim: 11 teratas + "+N tim lainnya" (kartu tidak memanjang).
+            // Tablet 4 kolom, HP 2 kolom: semua tim tampil.
+            <ul className={`flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-4 ${d.perTimHadir.length <= 8 ? 'lg:grid-cols-2' : 'lg:grid-cols-3'} gap-x-4 gap-y-2 content-center`} aria-label="Hadir per tim">
+              {d.perTimHadir.map((t, i) => (
+                <li key={t.key} className={d.perTimHadir.length > 12 && i >= 11 ? 'lg:hidden' : undefined} title={`${t.nama}: ${t.hadir} dari ${t.total}${harian ? '' : ' (rata-rata per hari kerja)'}`}>
+                  <div className="flex items-baseline justify-between gap-2 text-xs">
+                    <span className="truncate text-slate-300">{t.pendek}</span>
+                    <span className="tabular-nums text-slate-400 shrink-0"><b className="text-white">{t.hadir}</b>/{t.total}</span>
+                  </div>
+                  <div className="mt-1 h-1 rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full rounded-full bg-blue-400" style={{ width: `${t.total ? Math.max(t.hadir ? 4 : 0, Math.round((t.hadir / t.total) * 100)) : 0}%` }} />
+                  </div>
+                </li>
+              ))}
+              {d.perTimHadir.length > 12 && (
+                <li className="hidden lg:flex items-center">
+                  <Link href="/kehadiran" className="text-xs font-semibold text-blue-300 hover:text-blue-200">+{d.perTimHadir.length - 11} lainnya</Link>
+                </li>
               )}
-            </>
+            </ul>
           )}
         </div>
         {kartuKpi.map(({ key, judul, icon: Icon }) => (
