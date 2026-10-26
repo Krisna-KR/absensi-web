@@ -33,7 +33,7 @@ export default function HeaderSapaan() {
       </div>
       <p className="md:ml-auto md:text-right text-xl sm:text-2xl lg:text-[1.7rem] italic font-semibold leading-snug tracking-tight bg-gradient-to-r from-amber-700 via-amber-600 to-yellow-600 bg-clip-text text-transparent"
         style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
-        “Making the World a Better Place to Trade”
+        “Your Trusted Trading Partner”
       </p>
     </section>
   );
