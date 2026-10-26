@@ -130,9 +130,11 @@ function olahData(rows, periode) {
     const hadir = list.filter(r => r.status === 'Hadir' || r.status === 'Late').length;
     return { hadir: Math.round(hadir / hari), total: Math.round(list.length / hari) };
   };
-  const ringkasHadir = rataHarian(kpiRows);
+  // Termasuk yang "Belum Absen": pembagi = semua karyawan aktif yang wajib masuk (bukan hanya yang sudah absen)
+  const barisHadir = (periode === 'hari_ini' ? rows.filter(r => r.tanggal === hariIni) : rows).filter(r => r.status !== 'Libur');
+  const ringkasHadir = rataHarian(barisHadir);
   const barisTim = new Map();
-  kpiRows.forEach(r => {
+  barisHadir.forEach(r => {
     const nama = namaTim(r);
     if (!barisTim.has(nama)) barisTim.set(nama, []);
     barisTim.get(nama).push(r);
@@ -230,7 +232,7 @@ export default function Dashboard() {
               </button>
             )}
           </div>
-          {loading ? <PutarTunggu className="h-10 justify-start" ukuran="w-5 h-5" /> : !d.totalKpi ? (
+          {loading ? <PutarTunggu className="h-10 justify-start" ukuran="w-5 h-5" /> : !d.ringkasHadir.total ? (
             <>
               <p className="text-lg font-semibold">{periode === 'hari_ini' ? 'Hari ini libur' : 'Belum ada hari kerja'}</p>
               <p className="text-xs text-slate-400">Sabtu, Minggu, dan tanggal merah tidak dihitung</p>
