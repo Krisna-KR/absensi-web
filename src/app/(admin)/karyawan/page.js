@@ -35,6 +35,15 @@ const LAINNYA = 'Lainnya (tulis sendiri)';
 // Pilih "Appointment dengan client" -> jam masuk langsung diisi 09:00 (tetap bisa diubah). Karyawan shift tidak ikut.
 const ALASAN_APPOINTMENT = 'Appointment dengan client';
 const JAM_APPOINTMENT = '09:00';
+// Appointment bisa beberapa hari (misal luar kota). Batas rentang supaya salah ketik tahun tidak membuat ratusan baris.
+const MAKS_HARI_APPOINTMENT = 31;
+// Daftar tanggal YYYY-MM-DD dari mulai sampai akhir (inklusif)
+const daftarTanggal = (mulai, akhir) => {
+  const hasil = [];
+  const d = new Date(`${mulai}T00:00:00Z`); const batas = new Date(`${akhir}T00:00:00Z`);
+  while (d <= batas && hasil.length <= MAKS_HARI_APPOINTMENT) { hasil.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); }
+  return hasil;
+};
 const JENIS_MANUAL = [
   { v: 'Hadir', l: 'Hadir (input jam masuk / pulang)' },
   { v: 'Izin', l: 'Izin (kepentingan pribadi)' },
@@ -440,6 +449,7 @@ export default function KaryawanPage() {
       pakaiShift: !!jabatanList.find(j => j.nama === kar.jabatan)?.pakai_shift,
       keluar: jamMenitWIB(abs?.waktu_keluar) || '',
       keterangan: izin?.keterangan || abs?.keterangan || '',
+      sampai: tanggal,
       absensiId: abs?.id || null,
       izinId: izin?.id || null,
       info: abs ? `Sudah ada absensi (${STATUS_KEHADIRAN[abs.status]?.label || abs.status})${abs.updated_at ? `, terakhir diubah ${formatTanggalWaktu(abs.updated_at)}` : ''}.`
@@ -453,8 +463,20 @@ export default function KaryawanPage() {
     const m = manual; const errs = {};
     const hariIni = tanggalWIB();
     if (!m.tanggal) errs.tanggal = 'Pilih tanggal.';
+    const appointment = m.jenis === 'Hadir' && !m.alasanLain && m.keterangan === ALASAN_APPOINTMENT;
+    const rentang = appointment && m.sampai && m.sampai !== m.tanggal;
+    if (rentang) {
+      if (m.sampai < m.tanggal) errs.sampai = 'Tanggal selesai tidak boleh sebelum tanggal mulai.';
+      else if (daftarTanggal(m.tanggal, m.sampai).length > MAKS_HARI_APPOINTMENT) errs.sampai = `Maksimal ${MAKS_HARI_APPOINTMENT} hari sekali input.`;
+      if (!m.masuk) errs.masuk = 'Isi jam masuk. Dipakai untuk semua hari di rentang ini.';
+      if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = 'Jam pulang harus setelah jam masuk.';
+      if (m.pakaiShift && m.masuk && !m.shift) errs.shift = 'Pilih shift supaya status telat dihitung dari jam shift yang benar.';
+      if (Object.keys(errs).length > 0) { setErrorsManual(errs); return; }
+      await simpanAppointmentRentang(m);
+      return;
+    }
     if (m.jenis === 'Hadir') {
-      if (m.tanggal > hariIni) errs.tanggal = 'Jam hadir hanya bisa diisi untuk hari ini atau sebelumnya.';
+      if (m.tanggal > hariIni && !appointment) errs.tanggal = 'Jam hadir hanya bisa diisi untuk hari ini atau sebelumnya.';
       if (!m.masuk && !m.keluar) errs.masuk = 'Isi jam masuk, jam pulang, atau keduanya.';
       if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = 'Jam pulang harus setelah jam masuk.';
       if (m.pakaiShift && m.masuk && !m.shift) errs.shift = 'Pilih shift supaya status telat dihitung dari jam shift yang benar.';
@@ -495,6 +517,71 @@ export default function KaryawanPage() {
     setLoading(false);
     if (error) { toast(pesanError(error), 'gagal'); return; }
     toast(`Absensi ${m.kar.nama_lengkap} untuk ${formatTanggal(m.tanggal)} tersimpan.`);
+    setShowManual(false);
+  };
+
+  // Appointment beberapa hari: hari kerja saja, tanggal yang sudah ada datanya dilewati (tidak ditimpa).
+  // Jam masuk berlaku untuk semua hari; jam pulang hanya untuk hari terakhir (untuk hari setengah, misal 4,5 hari).
+  const simpanAppointmentRentang = async (m) => {
+    const semua = daftarTanggal(m.tanggal, m.sampai);
+    const hariIni = tanggalWIB();
+    setLoading(true);
+    const [rAbs, rIzin, rLibur, rJumlah] = await Promise.all([
+      supabase.from('absensi').select('tanggal').eq('id_karyawan', m.kar.id).gte('tanggal', m.tanggal).lte('tanggal', m.sampai),
+      supabase.from('izin_harian').select('tanggal, jenis').eq('id_karyawan', m.kar.id).gte('tanggal', m.tanggal).lte('tanggal', m.sampai).neq('status_approval', 'Ditolak'),
+      supabase.from('master_libur').select('tanggal, keterangan').gte('tanggal', m.tanggal).lte('tanggal', m.sampai),
+      // Ikut aturan rekap (fn_kehadiran): hari lalu dengan kurang dari 3 orang absen dianggap libur
+      m.tanggal < hariIni ? supabase.rpc('fn_kehadiran', { p_mulai: m.tanggal, p_sampai: m.sampai, p_id_karyawan: m.kar.id }) : Promise.resolve({ data: [] }),
+    ]);
+    setLoading(false);
+    const gagal = rAbs.error || rIzin.error || rLibur.error || rJumlah.error;
+    if (gagal) { toast(pesanError(gagal), 'gagal'); return; }
+    const adaAbsen = new Set((rAbs.data || []).map(r => r.tanggal));
+    const izinMap = new Map((rIzin.data || []).map(r => [r.tanggal, r.jenis]));
+    const liburMap = new Map((rLibur.data || []).map(r => [r.tanggal, r.keterangan || 'Hari libur']));
+    const liburRekap = new Set((rJumlah.data || []).filter(r => r.tanggal < hariIni && r.status === 'Libur').map(r => r.tanggal));
+
+    const dicatat = []; const dilewati = [];
+    semua.forEach(t => {
+      const dow = new Date(`${t}T00:00:00Z`).getUTCDay();
+      if (dow === 0 || dow === 6) dilewati.push([t, 'akhir pekan']);
+      else if (liburMap.has(t)) dilewati.push([t, liburMap.get(t)]);
+      else if (adaAbsen.has(t)) dilewati.push([t, 'sudah ada absensi']);
+      else if (izinMap.has(t)) dilewati.push([t, `sudah tercatat ${izinMap.get(t)}`]);
+      else if (liburRekap.has(t)) dilewati.push([t, 'libur, kurang dari 3 orang absen']);
+      else dicatat.push(t);
+    });
+    if (dicatat.length === 0) { setErrorsManual({ sampai: 'Tidak ada hari kerja kosong di rentang ini. Semua tanggal libur atau sudah ada datanya.' }); return; }
+
+    const terakhir = dicatat[dicatat.length - 1];
+    const ok = await konfirmasi({
+      judul: `Catat appointment ${dicatat.length} hari?`,
+      pesan: (
+        <div className="space-y-2">
+          <p>{m.kar.nama_lengkap}, jam masuk {m.masuk}{m.keluar ? `, jam pulang ${m.keluar} di hari terakhir (${formatTanggal(terakhir)})` : ''}.</p>
+          <ul className="list-disc pl-5">{dicatat.map(t => <li key={t}>{formatTanggal(t)}</li>)}</ul>
+          {dilewati.length > 0 && (<>
+            <p className="font-medium text-slate-700">Dilewati:</p>
+            <ul className="list-disc pl-5">{dilewati.map(([t, why]) => <li key={t}>{formatTanggal(t)} ({why})</li>)}</ul>
+          </>)}
+        </div>
+      ),
+      tombolYa: 'Simpan',
+    });
+    if (!ok) return;
+
+    setLoading(true);
+    const { error } = await supabase.from('absensi').insert(dicatat.map(t => ({
+      id_karyawan: m.kar.id,
+      tanggal: t,
+      waktu_masuk: `${t}T${m.masuk}:00+07:00`,
+      waktu_keluar: t === terakhir && m.keluar ? `${t}T${m.keluar}:00+07:00` : null,
+      shift: m.pakaiShift && m.shift ? Number(m.shift) : null,
+      keterangan: ALASAN_APPOINTMENT,
+    })));
+    setLoading(false);
+    if (error) { toast(pesanError(error), 'gagal'); return; }
+    toast(`Appointment ${m.kar.nama_lengkap} tercatat ${dicatat.length} hari${dilewati.length ? `, ${dilewati.length} tanggal dilewati` : ''}.`);
     setShowManual(false);
   };
 
@@ -856,7 +943,7 @@ export default function KaryawanPage() {
                     <ErrText msg={errorsManual.masuk} />
                   </div>
                   <div>
-                    <label className="text-sm font-semibold text-slate-700">Jam Pulang</label>
+                    <label className="text-sm font-semibold text-slate-700">Jam Pulang{!manual.alasanLain && manual.keterangan === ALASAN_APPOINTMENT && manual.sampai && manual.sampai !== manual.tanggal ? ' (hari terakhir)' : ''}</label>
                     <input type="time" value={manual.keluar} onChange={e => setManual({ ...manual, keluar: e.target.value })} className={getStyleInput(errorsManual.keluar)} />
                     <ErrText msg={errorsManual.keluar} />
                   </div>
@@ -886,8 +973,8 @@ export default function KaryawanPage() {
                         <select value={pilihan || ''} onChange={e => {
                           const v = e.target.value;
                           setManual(v === LAINNYA
-                            ? { ...manual, alasanLain: true, keterangan: ALASAN_MANUAL.includes(manual.keterangan) ? '' : manual.keterangan }
-                            : { ...manual, alasanLain: false, keterangan: v,
+                            ? { ...manual, alasanLain: true, sampai: manual.tanggal, keterangan: ALASAN_MANUAL.includes(manual.keterangan) ? '' : manual.keterangan }
+                            : { ...manual, alasanLain: false, keterangan: v, sampai: manual.tanggal,
                                 ...(v === ALASAN_APPOINTMENT && !manual.pakaiShift ? { masuk: JAM_APPOINTMENT } : {}) });
                           if (v === ALASAN_APPOINTMENT && !manual.pakaiShift) setErrorsManual({ ...errorsManual, masuk: null });
                         }} className={getStyleInput(false)}>
@@ -898,6 +985,18 @@ export default function KaryawanPage() {
                       </div>
                       {pilihan === ALASAN_APPOINTMENT && !manual.pakaiShift && (
                         <p className="text-[11px] text-slate-500">Jam masuk otomatis diisi {JAM_APPOINTMENT}. Masih bisa diubah.</p>
+                      )}
+                      {pilihan === ALASAN_APPOINTMENT && (
+                        <div>
+                          <label className="text-sm font-semibold text-slate-700">Sampai Tanggal</label>
+                          <input type="date" min={manual.tanggal} value={manual.sampai || manual.tanggal} onChange={e => { setManual({ ...manual, sampai: e.target.value || manual.tanggal }); setErrorsManual({ ...errorsManual, sampai: null }); }} className={getStyleInput(errorsManual.sampai)} />
+                          <ErrText msg={errorsManual.sampai} />
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            {manual.sampai && manual.sampai !== manual.tanggal
+                              ? 'Beberapa hari: jam masuk dipakai untuk semua hari, jam pulang hanya untuk hari terakhir (isi kalau hari terakhir setengah hari). Sabtu/Minggu, hari libur, dan tanggal yang sudah ada datanya dilewati.'
+                              : 'Appointment lebih dari sehari (misal luar kota)? Ubah tanggal ini.'}
+                          </p>
+                        </div>
                       )}
                       {pilihan === LAINNYA && (
                         <input type="text" autoFocus placeholder="Tulis alasannya" value={manual.keterangan} onChange={e => setManual({ ...manual, keterangan: e.target.value })} className={getStyleInput(false)} />
