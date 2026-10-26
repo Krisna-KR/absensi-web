@@ -123,20 +123,26 @@ function olahData(rows, periode) {
   })).sort((a, b) => b.nilai - a.nilai || a.rata - b.rata).slice(0, 5)
     .map(t => ({ ...t, sub: `rata-rata masuk ${jj(t.rata)}` }));
 
-  // Hadir per tim (kartu gelap): yang absen masuk/pulang per tim pada periode KPI
-  const hadirTim = new Map();
+  // Hadir per tim (kartu gelap): hadir / jumlah karyawan.
+  // Hari ini = angka hari ini; Bulan/Tahun ini = rata-rata per hari kerja (dibulatkan).
+  const rataHarian = (list) => {
+    const hari = new Set(list.map(r => r.tanggal)).size || 1;
+    const hadir = list.filter(r => r.status === 'Hadir' || r.status === 'Late').length;
+    return { hadir: Math.round(hadir / hari), total: Math.round(list.length / hari) };
+  };
+  const ringkasHadir = rataHarian(kpiRows);
+  const barisTim = new Map();
   kpiRows.forEach(r => {
     const nama = namaTim(r);
-    const t = hadirTim.get(nama) || { hadir: 0, total: 0 };
-    t.total++; if (r.status === 'Hadir' || r.status === 'Late') t.hadir++;
-    hadirTim.set(nama, t);
+    if (!barisTim.has(nama)) barisTim.set(nama, []);
+    barisTim.get(nama).push(r);
   });
-  const semuaNama = [...hadirTim.keys()];
-  const perTimHadir = [...hadirTim.entries()]
-    .map(([nama, t]) => ({ key: nama, nama, pendek: namaPendek(nama, semuaNama), ...t }))
+  const semuaNama = [...barisTim.keys()];
+  const perTimHadir = [...barisTim.entries()]
+    .map(([nama, list]) => ({ key: nama, nama, pendek: namaPendek(nama, semuaNama), ...rataHarian(list) }))
     .sort((a, b) => b.hadir - a.hadir || a.nama.localeCompare(b.nama, 'id'));
 
-  return { kpi, totalKpi, tren, hist, perTim, topTepat, perTimHadir, adaJam: hist.some(h => h.nilai.Hadir + h.nilai.Late > 0) };
+  return { kpi, totalKpi, tren, hist, perTim, topTepat, perTimHadir, ringkasHadir, adaJam: hist.some(h => h.nilai.Hadir + h.nilai.Late > 0) };
 }
 
 function Kartu({ judul, sub, aksi, children, className = '' }) {
@@ -183,7 +189,7 @@ export default function Dashboard() {
 
   const d = useMemo(() => olahData(rows, periode), [rows, periode]);
   const persen = (n) => (d.totalKpi ? Math.round((n / d.totalKpi) * 1000) / 10 : 0);
-  const jumlahHadir = d.kpi.Hadir + d.kpi.Late;
+  const harian = periode === 'hari_ini';
   const labelPeriode = PERIODE.find(p => p.key === periode).label.toLowerCase();
 
   const kartuKpi = [
@@ -231,13 +237,16 @@ export default function Dashboard() {
             </>
           ) : (
             <>
-              <p className="text-4xl font-bold tracking-tight tabular-nums">{jumlahHadir.toLocaleString('id-ID')}<span className="text-lg font-semibold text-slate-400"> / {d.totalKpi.toLocaleString('id-ID')}</span></p>
+              <div>
+                <p className="text-4xl font-bold tracking-tight tabular-nums">{d.ringkasHadir.hadir.toLocaleString('id-ID')}<span className="text-lg font-semibold text-slate-400"> / {d.ringkasHadir.total.toLocaleString('id-ID')}</span></p>
+                <p className="text-xs text-slate-400 mt-0.5">{harian ? 'Karyawan hadir hari ini' : 'Rata-rata hadir per hari kerja'}</p>
+              </div>
               {timTerbuka && (
                 <ul className="grid grid-cols-2 gap-1.5">
                   {d.perTimHadir.map(t => (
-                    <li key={t.key} title={`${t.nama}: ${t.hadir} dari ${t.total}`} className="flex items-center justify-between gap-1 rounded-lg bg-white/[0.07] border border-white/10 px-2 py-1.5 text-xs">
+                    <li key={t.key} title={`${t.nama}: ${t.hadir} dari ${t.total}${harian ? '' : ' (rata-rata per hari kerja)'}`} className="flex items-center justify-between gap-1 rounded-lg bg-white/[0.07] border border-white/10 px-2 py-1.5 text-xs">
                       <span className="truncate text-slate-300">{t.pendek}</span>
-                      <b className="tabular-nums text-white">{t.hadir}</b>
+                      <span className="tabular-nums"><b className="text-white">{t.hadir}</b><span className="text-slate-500">/{t.total}</span></span>
                     </li>
                   ))}
                 </ul>
