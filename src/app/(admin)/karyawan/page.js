@@ -458,7 +458,8 @@ export default function KaryawanPage() {
       if (!m.masuk && !m.keluar) errs.masuk = 'Isi jam masuk, jam pulang, atau keduanya.';
       if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = 'Jam pulang harus setelah jam masuk.';
       if (m.pakaiShift && m.masuk && !m.shift) errs.shift = 'Pilih shift supaya status telat dihitung dari jam shift yang benar.';
-    } else if (!m.keterangan.trim()) {
+    } else if (m.jenis !== 'Sakit' && !m.keterangan.trim()) {
+      // Sakit boleh tanpa keterangan; Izin dan Cuti tetap wajib
       errs.keterangan = `Tulis alasan ${m.jenis.toLowerCase()}, misalnya "demam, ada surat dokter".`;
     }
     if (Object.keys(errs).length > 0) { setErrorsManual(errs); return; }
@@ -487,7 +488,7 @@ export default function KaryawanPage() {
     } else {
       ({ error } = await supabase.from('izin_harian').upsert({
         id_karyawan: m.kar.id, tanggal: m.tanggal, jenis: m.jenis,
-        keterangan: m.keterangan.trim(), status_approval: 'Disetujui',
+        keterangan: m.keterangan.trim() || null, status_approval: 'Disetujui',
       }, { onConflict: 'id_karyawan,tanggal' }));
       if (!error && m.absensiId) ({ error } = await supabase.from('absensi').delete().eq('id', m.absensiId));
     }
@@ -907,7 +908,7 @@ export default function KaryawanPage() {
               </>
             ) : (
               <div>
-                <label className="text-sm font-semibold text-slate-700">Keterangan <span className="text-rose-500">*</span></label>
+                <label className="text-sm font-semibold text-slate-700">Keterangan {manual.jenis === 'Sakit' ? <span className="font-normal text-slate-400">(opsional)</span> : <span className="text-rose-500">*</span>}</label>
                 <textarea rows="3" placeholder="Contoh: Demam, ada surat dokter" value={manual.keterangan} onChange={e => { setManual({ ...manual, keterangan: e.target.value }); setErrorsManual({ ...errorsManual, keterangan: null }); }} className={getStyleInput(errorsManual.keterangan)}></textarea>
                 <ErrText msg={errorsManual.keterangan} />
               </div>
