@@ -14,7 +14,6 @@ const INTERVAL_QR = 10;
 const INTERVAL_SCAN_MS = 3000;     // cek scan baru
 const INTERVAL_PAPAN_MS = 60_000;  // segarkan daftar & leaderboard
 const LAMA_BUBBLE_MS = 3000;
-const KUNCI_LOKASI = 'kiosk_lokasi';
 // Kecepatan running text: 8% tinggi layar per detik (sekitar 85 px/detik di TV 1080p)
 const KECEPATAN_VH_PER_DETIK = 8;
 
@@ -152,7 +151,7 @@ export default function LayarPresensi() {
     setGalat(pesanError(error));
   }, [router]);
 
-  // Daftar lokasi + lokasi terakhir yang dipilih di browser ini (default Surabaya)
+  // Daftar lokasi; lokasi awal selalu Surabaya
   useEffect(() => {
     let batal = false;
     (async () => {
@@ -160,11 +159,9 @@ export default function LayarPresensi() {
       if (batal) return;
       if (error) { tanganiError(error); return; }
       setLokasiList(data || []);
-      let simpanan = '';
-      try { simpanan = localStorage.getItem(KUNCI_LOKASI) || ''; } catch { /* abaikan */ }
-      // Belum pernah dipilih di browser ini: default Surabaya (kalau tidak ada, lokasi pertama)
+      // Setiap layar dibuka selalu mulai di Surabaya (kalau tidak ada, lokasi pertama)
       const surabaya = (data || []).find(l => l.nama_cabang?.trim().toLowerCase() === 'surabaya');
-      setIdLokasi((data || []).some(l => l.id === simpanan) ? simpanan : (surabaya?.id || data?.[0]?.id || ''));
+      setIdLokasi(surabaya?.id || data?.[0]?.id || '');
     })();
     return () => { batal = true; };
   }, [tanganiError]);
@@ -254,8 +251,7 @@ export default function LayarPresensi() {
   }, []);
 
   const gantiLokasi = (id) => {
-    setIdLokasi(id);
-    try { localStorage.setItem(KUNCI_LOKASI, id); } catch { /* abaikan */ }
+    setIdLokasi(id);   // hanya untuk sesi ini; dibuka ulang kembali ke Surabaya
   };
 
   const namaLokasi = lokasiList.find(l => l.id === idLokasi)?.nama_cabang || '';
