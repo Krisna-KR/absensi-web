@@ -145,7 +145,7 @@ export default function LayarPresensi() {
   const tanganiError = useCallback((error) => {
     if (kodeError(error) === 'SESI_HABIS') {
       hapusToken('admin');
-      router.replace('/login?next=/qr-kiosk');
+      router.replace('/login?next=/layar');
       return;
     }
     setGalat(pesanError(error));

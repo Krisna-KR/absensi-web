@@ -7,7 +7,7 @@ import { supabase } from '@/utils/supabase/client';
 import { ambilToken, simpanToken, hapusToken, kodeError } from '@/utils/sesi';
 import { pesanError } from '@/utils/pesanError';
 
-// Setelah login, kembali ke halaman asal (?next=/qr-kiosk). Hanya path internal.
+// Setelah login, kembali ke halaman asal (?next=/layar). Hanya path internal.
 function tujuanSetelahLogin() {
   try {
     const next = new URLSearchParams(window.location.search).get('next') || '';

@@ -104,7 +104,7 @@ export default function AdminLayout({ children }) {
             <MenuRekap />
             <MenuMaster />
             {boleh('layar') && (
-              <Link href="/qr-kiosk" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-white bg-slate-900 hover:bg-slate-800 transition px-3 2xl:px-4 py-2 rounded-lg font-semibold shrink-0">
+              <Link href="/layar" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-white bg-slate-900 hover:bg-slate-800 transition px-3 2xl:px-4 py-2 rounded-lg font-semibold shrink-0">
                   <MonitorSmartphone className="w-4 h-4" /> Layar Presensi
               </Link>
             )}
