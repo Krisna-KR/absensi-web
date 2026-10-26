@@ -152,7 +152,7 @@ export default function LayarPresensi() {
     setGalat(pesanError(error));
   }, [router]);
 
-  // Daftar lokasi + lokasi terakhir yang dipilih di browser ini
+  // Daftar lokasi + lokasi terakhir yang dipilih di browser ini (default Surabaya)
   useEffect(() => {
     let batal = false;
     (async () => {
@@ -162,7 +162,9 @@ export default function LayarPresensi() {
       setLokasiList(data || []);
       let simpanan = '';
       try { simpanan = localStorage.getItem(KUNCI_LOKASI) || ''; } catch { /* abaikan */ }
-      setIdLokasi((data || []).some(l => l.id === simpanan) ? simpanan : (data?.[0]?.id || ''));
+      // Belum pernah dipilih di browser ini: default Surabaya (kalau tidak ada, lokasi pertama)
+      const surabaya = (data || []).find(l => l.nama_cabang?.trim().toLowerCase() === 'surabaya');
+      setIdLokasi((data || []).some(l => l.id === simpanan) ? simpanan : (surabaya?.id || data?.[0]?.id || ''));
     })();
     return () => { batal = true; };
   }, [tanganiError]);
