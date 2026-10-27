@@ -472,7 +472,16 @@ export default function KaryawanPage() {
       if (m.keluar && m.masuk && m.keluar <= m.masuk) errs.keluar = 'Jam pulang harus setelah jam masuk.';
       if (m.pakaiShift && m.masuk && !m.shift) errs.shift = 'Pilih shift supaya status telat dihitung dari jam shift yang benar.';
       if (Object.keys(errs).length > 0) { setErrorsManual(errs); return; }
-      await simpanAppointmentRentang(m);
+      await simpanRentang(m);
+      return;
+    }
+    // Cuti beberapa hari: tanpa jam, satu baris izin_harian per hari kerja
+    if (m.jenis === 'Cuti' && m.sampai && m.sampai !== m.tanggal) {
+      if (m.sampai < m.tanggal) errs.sampai = 'Tanggal selesai tidak boleh sebelum tanggal mulai.';
+      else if (daftarTanggal(m.tanggal, m.sampai).length > MAKS_HARI_APPOINTMENT) errs.sampai = `Maksimal ${MAKS_HARI_APPOINTMENT} hari sekali input.`;
+      if (!m.keterangan.trim()) errs.keterangan = 'Tulis alasan cuti, misalnya "cuti tahunan".';
+      if (Object.keys(errs).length > 0) { setErrorsManual(errs); return; }
+      await simpanRentang(m);
       return;
     }
     if (m.jenis === 'Hadir') {
@@ -520,9 +529,11 @@ export default function KaryawanPage() {
     setShowManual(false);
   };
 
-  // Appointment beberapa hari: hari kerja saja, tanggal yang sudah ada datanya dilewati (tidak ditimpa).
-  // Jam masuk berlaku untuk semua hari; jam pulang hanya untuk hari terakhir (untuk hari setengah, misal 4,5 hari).
-  const simpanAppointmentRentang = async (m) => {
+  // Appointment atau Cuti beberapa hari: hari kerja saja, tanggal yang sudah ada datanya dilewati (tidak ditimpa).
+  // Appointment: jam masuk berlaku untuk semua hari; jam pulang hanya untuk hari terakhir (untuk hari setengah, misal 4,5 hari).
+  // Cuti: tanpa jam, dicatat di izin_harian dengan status Disetujui.
+  const simpanRentang = async (m) => {
+    const cuti = m.jenis === 'Cuti';
     const semua = daftarTanggal(m.tanggal, m.sampai);
     const hariIni = tanggalWIB();
     setLoading(true);
@@ -555,10 +566,10 @@ export default function KaryawanPage() {
 
     const terakhir = dicatat[dicatat.length - 1];
     const ok = await konfirmasi({
-      judul: `Catat appointment ${dicatat.length} hari?`,
+      judul: `Catat ${cuti ? 'cuti' : 'appointment'} ${dicatat.length} hari?`,
       pesan: (
         <div className="space-y-2">
-          <p>{m.kar.nama_lengkap}, jam masuk {m.masuk}{m.keluar ? `, jam pulang ${m.keluar} di hari terakhir (${formatTanggal(terakhir)})` : ''}.</p>
+          <p>{cuti ? `${m.kar.nama_lengkap}, ${m.keterangan.trim()}.` : `${m.kar.nama_lengkap}, jam masuk ${m.masuk}${m.keluar ? `, jam pulang ${m.keluar} di hari terakhir (${formatTanggal(terakhir)})` : ''}.`}</p>
           <ul className="list-disc pl-5">{dicatat.map(t => <li key={t}>{formatTanggal(t)}</li>)}</ul>
           {dilewati.length > 0 && (<>
             <p className="font-medium text-slate-700">Dilewati:</p>
@@ -571,17 +582,22 @@ export default function KaryawanPage() {
     if (!ok) return;
 
     setLoading(true);
-    const { error } = await supabase.from('absensi').insert(dicatat.map(t => ({
-      id_karyawan: m.kar.id,
-      tanggal: t,
-      waktu_masuk: `${t}T${m.masuk}:00+07:00`,
-      waktu_keluar: t === terakhir && m.keluar ? `${t}T${m.keluar}:00+07:00` : null,
-      shift: m.pakaiShift && m.shift ? Number(m.shift) : null,
-      keterangan: ALASAN_APPOINTMENT,
-    })));
+    const { error } = cuti
+      ? await supabase.from('izin_harian').insert(dicatat.map(t => ({
+          id_karyawan: m.kar.id, tanggal: t, jenis: 'Cuti',
+          keterangan: m.keterangan.trim(), status_approval: 'Disetujui',
+        })))
+      : await supabase.from('absensi').insert(dicatat.map(t => ({
+          id_karyawan: m.kar.id,
+          tanggal: t,
+          waktu_masuk: `${t}T${m.masuk}:00+07:00`,
+          waktu_keluar: t === terakhir && m.keluar ? `${t}T${m.keluar}:00+07:00` : null,
+          shift: m.pakaiShift && m.shift ? Number(m.shift) : null,
+          keterangan: ALASAN_APPOINTMENT,
+        })));
     setLoading(false);
     if (error) { toast(pesanError(error), 'gagal'); return; }
-    toast(`Appointment ${m.kar.nama_lengkap} tercatat ${dicatat.length} hari${dilewati.length ? `, ${dilewati.length} tanggal dilewati` : ''}.`);
+    toast(`${cuti ? 'Cuti' : 'Appointment'} ${m.kar.nama_lengkap} tercatat ${dicatat.length} hari${dilewati.length ? `, ${dilewati.length} tanggal dilewati` : ''}.`);
     setShowManual(false);
   };
 
@@ -928,7 +944,7 @@ export default function KaryawanPage() {
               </div>
               <div>
                 <label className="text-sm font-semibold text-slate-700">Jenis <span className="text-rose-500">*</span></label>
-                <select value={manual.jenis} onChange={e => { setManual({ ...manual, jenis: e.target.value }); setErrorsManual({}); }} className={getStyleInput(false)}>
+                <select value={manual.jenis} onChange={e => { setManual({ ...manual, jenis: e.target.value, sampai: manual.tanggal }); setErrorsManual({}); }} className={getStyleInput(false)}>
                   {JENIS_MANUAL.map(j => <option key={j.v} value={j.v}>{j.l}</option>)}
                 </select>
               </div>
@@ -1006,11 +1022,25 @@ export default function KaryawanPage() {
                 })()}
               </>
             ) : (
+              <>
+              {manual.jenis === 'Cuti' && (
+                <div>
+                  <label className="text-sm font-semibold text-slate-700">Sampai Tanggal</label>
+                  <input type="date" min={manual.tanggal} value={manual.sampai || manual.tanggal} onChange={e => { setManual({ ...manual, sampai: e.target.value || manual.tanggal }); setErrorsManual({ ...errorsManual, sampai: null }); }} className={getStyleInput(errorsManual.sampai)} />
+                  <ErrText msg={errorsManual.sampai} />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {manual.sampai && manual.sampai !== manual.tanggal
+                      ? 'Beberapa hari: Sabtu/Minggu, hari libur, dan tanggal yang sudah ada datanya dilewati.'
+                      : 'Cuti lebih dari sehari? Ubah tanggal ini.'}
+                  </p>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-semibold text-slate-700">Keterangan {manual.jenis === 'Sakit' ? <span className="font-normal text-slate-400">(opsional)</span> : <span className="text-rose-500">*</span>}</label>
                 <textarea rows="3" placeholder="Contoh: Demam, ada surat dokter" value={manual.keterangan} onChange={e => { setManual({ ...manual, keterangan: e.target.value }); setErrorsManual({ ...errorsManual, keterangan: null }); }} className={getStyleInput(errorsManual.keterangan)}></textarea>
                 <ErrText msg={errorsManual.keterangan} />
               </div>
+              </>
             )}
 
             <FooterModal className="justify-between">
