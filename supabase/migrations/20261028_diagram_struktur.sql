@@ -125,3 +125,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.diagram_struktur_garis (dari, ke)
   SELECT id_atasan, id FROM public.karyawan WHERE is_aktif AND is_approved AND id_atasan IS NOT NULL
 ON CONFLICT DO NOTHING;
+
+-- ---------- 8. Perbaikan: web admin belum punya izin DELETE di absensi ----------
+-- (Kosongkan / ganti Hadir -> Izin di Input Manual). Siapa yang boleh tetap diatur policy admin_hapus.
+GRANT DELETE ON public.absensi TO anon, authenticated;
