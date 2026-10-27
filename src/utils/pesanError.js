@@ -27,6 +27,7 @@ export function pesanError(error) {
     NAMA_KOSONG: 'Isi nama minimal 2 huruf.',
     DATA_TIDAK_ADA: 'Data tidak ditemukan. Muat ulang halaman.',
     AKUN_NONAKTIF: 'Akun ini sudah dinonaktifkan. Hubungi superadmin.',
+    GARIS_MELINGKAR: 'Garis ini membuat lingkaran: orang yang dituju sudah berada di atasnya.',
   };
   if (KODE[pesan]) return KODE[pesan];
   if (pesan === 'NOMINAL_MINUS') return 'Allowance dan komisi tidak boleh minus.';

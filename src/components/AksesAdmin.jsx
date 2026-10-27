@@ -6,7 +6,7 @@ export const MENU_AKSES = [
   { menu: 'dashboard', label: 'Dashboard', aksi: ['lihat'] },
   { menu: 'kehadiran', label: 'Kehadiran', aksi: ['lihat'] },
   { menu: 'karyawan', label: 'Karyawan', aksi: ['lihat', 'tambah', 'ubah', 'hapus'] },
-  { menu: 'rekap', label: 'Rekap & struktur', aksi: ['lihat'] },
+  { menu: 'rekap', label: 'Rekap & struktur', aksi: ['lihat', 'ubah'] },   // ubah = edit Diagram struktur
   { menu: 'allowance', label: 'Allowance', aksi: ['lihat', 'ubah'] },
   { menu: 'master', label: 'Master data', aksi: ['lihat', 'tambah', 'ubah', 'hapus'] },
   { menu: 'layar', label: 'Layar presensi', aksi: ['lihat'] },

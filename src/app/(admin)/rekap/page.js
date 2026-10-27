@@ -1,11 +1,18 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { Printer, Users, Briefcase, Megaphone, MapPin, Crown, Table2, Network, ChevronDown } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { Printer, Users, Briefcase, Megaphone, MapPin, Crown, Table2, Network, ChevronDown, Workflow } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
 import { formatTanggal, tanggalWIB } from '@/utils/waktu';
 import BaganStruktur from '@/components/BaganStruktur';
 import MohonTunggu from '@/components/MohonTunggu';
+
+// Library diagram cukup besar: hanya dimuat saat tab Diagram dibuka
+const DiagramStruktur = dynamic(() => import('@/components/DiagramStruktur'), {
+  ssr: false,
+  loading: () => <div className="bg-white rounded-xl border border-slate-200"><MohonTunggu className="min-h-[18rem]" /></div>,
+});
 
 const LABEL_DIVISI = {
   Marketing: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -79,7 +86,7 @@ export default function RekapPage() {
   const [loading, setLoading] = useState(true);
   const [galat, setGalat] = useState('');
   const [filterLokasi, setFilterLokasi] = useState('semua');
-  const [tampilan, setTampilan] = useState('tabel');   // 'tabel' | 'bagan'
+  const [tampilan, setTampilan] = useState('tabel');   // 'tabel' | 'bagan' | 'diagram'
 
   useEffect(() => {
     const ac = new AbortController();   // dihentikan saat pindah halaman
@@ -133,21 +140,21 @@ export default function RekapPage() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-5 rounded-xl border border-slate-200 shadow-sm print:border-0 print:shadow-none print:p-0">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Laporan Struktur Karyawan</h1>
-          <p className="hidden print:block text-sm text-slate-500">Per {formatTanggal(tanggalWIB())}{filterLokasi !== 'semua' ? ` · ${data.lokasi.find(l => l.id === filterLokasi)?.nama_cabang}` : ''}</p>
+          <p className="hidden print:block text-sm text-slate-500">Per {formatTanggal(tanggalWIB())}{tampilan !== 'diagram' && filterLokasi !== 'semua' ? ` · ${data.lokasi.find(l => l.id === filterLokasi)?.nama_cabang}` : ''}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 print:hidden">
           <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm" role="tablist" aria-label="Tampilan">
-            {[['tabel', 'Tabel', Table2], ['bagan', 'Bagan', Network]].map(([v, l, Icon]) => (
+            {[['tabel', 'Tabel', Table2], ['bagan', 'Bagan', Network], ['diagram', 'Diagram', Workflow]].map(([v, l, Icon]) => (
               <button key={v} role="tab" aria-selected={tampilan === v} onClick={() => setTampilan(v)}
                 className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold ${tampilan === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}><Icon className="w-4 h-4" />{l}</button>
             ))}
           </div>
-          <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm">
+          {tampilan !== 'diagram' && <div className="inline-flex p-1 bg-slate-100 rounded-lg text-sm">
             {[{ id: 'semua', nama_cabang: 'Semua lokasi' }, ...data.lokasi].map(l => (
               <button key={l.id} onClick={() => setFilterLokasi(l.id)}
                 className={`px-3 py-1 rounded-md font-semibold ${filterLokasi === l.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>{l.nama_cabang}</button>
             ))}
-          </div>
+          </div>}
           <button onClick={() => window.print()} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800">
             <Printer className="w-4 h-4" /> Cetak
           </button>
@@ -156,7 +163,9 @@ export default function RekapPage() {
 
       {galat && <div className="p-4 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg text-sm">Laporan belum bisa dimuat. {galat}</div>}
 
-      {loading ? (
+      {tampilan === 'diagram' ? (
+        <DiagramStruktur />
+      ) : loading ? (
         <div className="bg-white rounded-xl border border-slate-200"><MohonTunggu className="min-h-[18rem]" /></div>
       ) : tampilan === 'bagan' ? (
         <BaganStruktur semua={laporan.semua} atasanRole={laporan.atasanRole} idLokasi={filterLokasi} />
