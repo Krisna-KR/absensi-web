@@ -132,7 +132,7 @@ export default function KaryawanPage() {
   const { boleh } = useAkses();
   const bisa = { tambah: boleh('karyawan', 'tambah'), ubah: boleh('karyawan', 'ubah'), hapus: boleh('karyawan', 'hapus') };
   const [cari, setCari] = useState('');
-  const [filterTim, setFilterTim] = useState([]);   // chip divisi/tim yang dipilih (boleh banyak); kosong = Semua
+  const [filterTim, setFilterTim] = useState([]);   // chip divisi/tim yang dipilih (hanya satu); kosong = Semua
   const [urut, gantiUrut] = useUrutan({ kunci: 'nama', arah: 'asc' });
 
   // Modal Tambah/Edit Karyawan
@@ -211,7 +211,7 @@ export default function KaryawanPage() {
   }, [karyawan, timKar, lihatNonaktif]);
   // Pilihan yang masih ada di tab Aktif/Nonaktif saat ini; kosong = Semua
   const timDipilih = useMemo(() => new Set(filterTim.filter(key => opsiTim.some(t => t.key === key))), [filterTim, opsiTim]);
-  const pilihTim = (key) => setFilterTim(prev => key === 'semua' ? [] : prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  const pilihTim = (key) => setFilterTim(key === 'semua' ? [] : [key]);
   // Pencarian & urutan tabel
   const daftarTampil = useMemo(() => {
     const q = cari.trim().toLowerCase();
