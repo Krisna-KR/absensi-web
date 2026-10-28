@@ -8,7 +8,6 @@ import {
   BaseEdge, EdgeLabelRenderer, getSmoothStepPath, ViewportPortal, applyNodeChanges, useReactFlow,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import dagre from '@dagrejs/dagre';
 import { Search, Wand2, RotateCcw, Plus, GripVertical, Trash2, X } from 'lucide-react';
 import { supabase } from '@/utils/supabase/client';
 import { pesanError } from '@/utils/pesanError';
@@ -21,16 +20,63 @@ const TINGGI = 56;
 const JARAK_SNAP = 8;          // dalam satuan diagram: kartu "menempel" ke garis bantu kalau sedekat ini
 const AksiContext = createContext({ bisaUbah: false, hapusGaris: () => {}, keluarkan: () => {} });
 
-// ---------- Tata letak otomatis (atas ke bawah) ----------
+// ---------- Tata letak otomatis: atas ke bawah, anggota dilipat per baris ----------
+// Atasan di kiri atas bloknya; anggota disusun KOLOM per baris, menjorok ke kanan dari garis induk,
+// jadi garis turun di sisi kiri tanpa menabrak kartu. Tim ditumpuk ke bawah, tidak memanjang ke samping.
+const KOLOM = 5;
+const JARAK_X = 24;         // antar kartu dalam satu baris
+const JARAK_Y = 44;         // antar baris (garis lewat di celah ini)
+const TURUN = 48;           // dari bawah kartu atasan ke baris pertama anggota
+const INDEN = LEBAR / 2 + 24;
+const JARAK_TIM = 96;       // antar blok tim
+
 function tataLetak(nodes, edges) {
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: 'TB', nodesep: 32, ranksep: 72, marginx: 20, marginy: 20 });
-  g.setDefaultEdgeLabel(() => ({}));
-  nodes.forEach(n => g.setNode(n.id, { width: LEBAR, height: TINGGI }));
-  edges.forEach(e => { if (g.hasNode(e.source) && g.hasNode(e.target)) g.setEdge(e.source, e.target); });
-  dagre.layout(g);
+  const nama = Object.fromEntries(nodes.map(n => [n.id, (n.data?.nama || '').toLowerCase()]));
+  const urutNama = (a, b) => nama[a].localeCompare(nama[b]);
+  // Satu induk utama per orang (yang namanya paling awal); garis ke induk lain tetap digambar
+  const induk = {};
+  [...edges].filter(e => nama[e.source] != null && nama[e.target] != null)
+    .sort((a, b) => urutNama(a.source, b.source))
+    .forEach(e => { if (!induk[e.target]) induk[e.target] = e.source; });
+  const anak = {};
+  Object.entries(induk).forEach(([c, p]) => { (anak[p] ||= []).push(c); });
+  Object.values(anak).forEach(l => l.sort(urutNama));
+
+  const ukuran = {};
+  const ukur = (id) => {
+    if (ukuran[id]) return ukuran[id];
+    const daftar = anak[id] || [];
+    if (!daftar.length) return (ukuran[id] = { w: LEBAR, h: TINGGI, baris: [] });
+    const baris = [];
+    for (let i = 0; i < daftar.length; i += KOLOM) {
+      const isi = daftar.slice(i, i + KOLOM);
+      const uk = isi.map(ukur);
+      baris.push({ isi, w: uk.reduce((t, u) => t + u.w, 0) + JARAK_X * (isi.length - 1), h: Math.max(...uk.map(u => u.h)) });
+    }
+    const gridW = Math.max(...baris.map(b => b.w));
+    const gridH = baris.reduce((t, b) => t + b.h, 0) + JARAK_Y * (baris.length - 1);
+    return (ukuran[id] = { w: Math.max(LEBAR, INDEN + gridW), h: TINGGI + TURUN + gridH, baris });
+  };
   const pos = {};
-  nodes.forEach(n => { const p = g.node(n.id); pos[n.id] = { x: Math.round(p.x - LEBAR / 2), y: Math.round(p.y - TINGGI / 2) }; });
+  const taruh = (id, x, y) => {
+    pos[id] = { x, y };
+    let cy = y + TINGGI + TURUN;
+    for (const b of ukur(id).baris) {
+      let cx = x + INDEN;
+      for (const c of b.isi) { taruh(c, cx, cy); cx += ukur(c).w + JARAK_X; }
+      cy += b.h + JARAK_Y;
+    }
+  };
+
+  const akar = nodes.map(n => n.id).filter(id => !induk[id]).sort(urutNama);
+  const tim = akar.filter(id => anak[id]?.length);
+  const sendiri = akar.filter(id => !anak[id]?.length);
+  let y = 0;
+  tim.forEach(id => { taruh(id, 0, y); y += ukur(id).h + JARAK_TIM; });
+  // Yang tidak punya atasan maupun anggota: dikumpulkan di bawah, KOLOM per baris
+  sendiri.forEach((id, i) => {
+    pos[id] = { x: (i % KOLOM) * (LEBAR + JARAK_X), y: y + Math.floor(i / KOLOM) * (TINGGI + JARAK_Y) };
+  });
   return pos;
 }
 
@@ -76,7 +122,9 @@ function KartuKaryawan({ id, data, selected }) {
 // ---------- Garis: panah, tombol hapus muncul saat dipilih ----------
 function GarisStruktur({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, selected }) {
   const { bisaUbah, hapusGaris } = useContext(AksiContext);
-  const [path, lx, ly] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 10 });
+  // Belokan mendatar tepat di atas kartu tujuan, supaya garis lewat celah antar baris, tidak menembus kartu
+  const centerY = targetY - sourceY > 40 ? targetY - 20 : undefined;
+  const [path, lx, ly] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 8, centerY });
   return (
     <>
       <BaseEdge id={id} path={path} markerEnd={markerEnd} interactionWidth={16}
@@ -130,6 +178,18 @@ function Diagram() {
   }, []);
   const bisaUbah = boleh('rekap', 'ubah') && !layarKecil;
 
+  // Tampilkan bagian atas diagram, selebar area (diagram memanjang ke bawah, digulir seperti halaman)
+  const lihatAtas = useCallback((list, durasi = 0) => {
+    if (!list.length) return;
+    const el = document.querySelector('.diagram-struktur');
+    const lebarArea = el?.clientWidth || 1000;
+    const minX = Math.min(...list.map(n => n.position.x));
+    const minY = Math.min(...list.map(n => n.position.y));
+    const maxX = Math.max(...list.map(n => n.position.x + LEBAR));
+    const zoom = Math.min(1, Math.max(0.35, (lebarArea - 48) / (maxX - minX)));
+    rf.setViewport({ x: 24 - minX * zoom, y: 24 - minY * zoom, zoom }, { duration: durasi });
+  }, [rf]);
+
   // ---------- Muat data ----------
   useEffect(() => {
     const ac = new AbortController();
@@ -170,10 +230,10 @@ function Diagram() {
         });
       }
       setKaryawan(kar); setNodes(nd); setEdges(ed); setGalat(''); setDimuat(true);
-      requestAnimationFrame(() => rf.fitView({ padding: 0.1 }));
+      requestAnimationFrame(() => lihatAtas(nd));
     })();
     return () => ac.abort();
-  }, [muatKe, rf]);
+  }, [muatKe, lihatAtas]);
 
   const diDiagram = useMemo(() => new Set(nodes.map(n => n.id)), [nodes]);
   const belumMasuk = useMemo(() => karyawan.filter(k => k.is_aktif && !diDiagram.has(k.id)), [karyawan, diDiagram]);
@@ -291,7 +351,7 @@ function Diagram() {
   const rapikan = async () => {
     const ok = await konfirmasi({
       judul: 'Rapikan otomatis?',
-      pesan: 'Semua kartu disusun ulang dari atas ke bawah mengikuti garis. Posisi yang sudah kamu geser manual ikut berubah.',
+      pesan: 'Semua kartu disusun ulang dari atas ke bawah, anggota tim dilipat 5 per baris. Posisi yang sudah kamu geser manual ikut berubah.',
       tombolYa: 'Rapikan',
     });
     if (!ok) return;
@@ -299,7 +359,7 @@ function Diagram() {
     const baru = nodes.map(n => ({ ...n, position: pos[n.id] }));
     setNodes(baru);
     await simpanPosisi(baru);
-    requestAnimationFrame(() => rf.fitView({ padding: 0.1, duration: 300 }));
+    requestAnimationFrame(() => lihatAtas(baru, 300));
   };
 
   const kembalikan = async () => {
@@ -336,7 +396,7 @@ function Diagram() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm print:border-0 print:shadow-none">
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-b border-slate-100 print:hidden">
           <p className="text-sm text-slate-500">
-            {bisaUbah ? 'Tarik dari titik biru di bawah kartu ke kartu lain untuk membuat garis. Klik garis untuk menghapus. Hanya informasi, tidak mengubah atasan.'
+            {bisaUbah ? 'Tarik dari titik biru di bawah kartu ke kartu lain untuk membuat garis. Klik garis untuk menghapus. Scroll untuk naik turun, Ctrl + scroll untuk zoom.'
               : layarKecil ? 'Di HP diagram hanya untuk dilihat. Ubah lewat laptop.' : 'Hanya untuk dilihat. Hak Edit Rekap & struktur dibutuhkan untuk mengubah.'}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -386,7 +446,7 @@ function Diagram() {
                 return c ? { ...e, selected: c.selected } : e;
               }))}
               nodesDraggable={bisaUbah} nodesConnectable={bisaUbah} elementsSelectable={bisaUbah}
-              deleteKeyCode={null} minZoom={0.15} maxZoom={2} fitView proOptions={{ hideAttribution: true }}
+              deleteKeyCode={null} minZoom={0.15} maxZoom={2} panOnScroll zoomOnScroll={false} proOptions={{ hideAttribution: true }}
               connectionLineStyle={{ stroke: '#4f46e5', strokeWidth: 2, strokeDasharray: '6 6' }}>
               <Background gap={24} size={1} color="#e2e8f0" className="print:hidden" />
               <Controls showInteractive={false} className="print:hidden" />
