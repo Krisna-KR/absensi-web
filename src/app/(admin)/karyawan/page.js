@@ -12,6 +12,7 @@ import PadTtd from '@/components/PadTtd';
 import { formatRupiah } from '@/utils/rupiah';
 import Modal from '@/components/Modal';
 import InfoKaryawan from '@/components/InfoKaryawan';
+import LogPerangkat from '@/components/LogPerangkat';
 import MohonTunggu from '@/components/MohonTunggu';
 import { useAkses } from '@/components/AksesAdmin';
 
@@ -148,6 +149,7 @@ export default function KaryawanPage() {
 
   // Modal Transfer Bawahan & Riwayat
   const [transfer, setTransfer] = useState(null); // { dari, ids, ke }
+  const [logHp, setLogHp] = useState(false);       // modal audit perangkat
   const [riwayat, setRiwayat] = useState(null);   // { kar, rows }
   const [idInfo, setIdInfo] = useState(null);     // popup info karyawan
 
@@ -640,6 +642,9 @@ export default function KaryawanPage() {
             <input type="search" value={cari} onChange={e => setCari(e.target.value)} placeholder="Cari nama, NIP, atau atasan"
               className="w-full sm:w-64 pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none" />
           </label>
+          <button type="button" onClick={() => setLogHp(true)} className="flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-700 border border-slate-200 bg-white hover:bg-slate-50">
+            <Smartphone className="w-4 h-4" /> Log HP
+          </button>
           {bisa.tambah && <button onClick={bukaTambah} className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors shadow-sm">
             <Plus className="w-4 h-4" /> Tambah Karyawan
           </button>}
@@ -905,6 +910,8 @@ export default function KaryawanPage() {
           </div>
         </Modal>
       )}
+
+      {logHp && <LogPerangkat karyawan={karyawan} onClose={() => setLogHp(false)} />}
 
       {/* MODAL RIWAYAT STRUKTUR */}
       {riwayat && (

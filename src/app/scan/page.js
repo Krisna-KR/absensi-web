@@ -5,11 +5,12 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { LayoutGrid, Clock, Bell, RefreshCcw, CheckCircle2, AlertCircle, Lock, UserPlus, Sun, Sunset, X, Wallet, ChevronRight, PenLine, KeyRound } from 'lucide-react';
 import NotifAllowance from '@/components/NotifAllowance';
 import RiwayatKehadiran from '@/components/RiwayatKehadiran';
-import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik } from '@/utils/waktu';
+import { tanggalWIB, jamWIB, rentangPeriode, formatJamDetik, formatTanggal } from '@/utils/waktu';
 import { hitungStatus, STATUS_KEHADIRAN } from '@/utils/kehadiran';
 import { pesanError } from '@/utils/pesanError';
 import { ambilToken, simpanToken, hapusToken, kodeError } from '@/utils/sesi';
 import { useFeedback } from '@/components/Feedback';
+import { namaBrowser } from '@/utils/perangkat';
 import GantiSandi from '@/components/GantiSandi';
 import MohonTunggu from '@/components/MohonTunggu';
 import Image from 'next/image';
@@ -19,7 +20,7 @@ const PESAN_KODE = {
   LOGIN_SALAH: 'Username atau password tidak cocok. Periksa lagi, lalu coba masuk.',
   AKUN_NONAKTIF: 'Akun ini sudah dinonaktifkan. Hubungi admin kalau menurutmu ini keliru.',
   BELUM_DISETUJUI: 'Akunmu belum disetujui admin. Hubungi admin untuk mengaktifkannya.',
-  HP_LAIN: 'Akun ini terkunci di HP lain. Minta admin melepas HP lama supaya kamu bisa masuk dari HP ini.',
+  HP_LAIN: 'Akun ini terkunci di HP atau browser lain. Kalau ini HP-mu, buka lewat browser yang sama dengan saat pertama login (atau ikon aplikasi di layar utama). Kalau sudah ganti HP, minta admin melepas HP lama.',
   DEVICE_KOSONG: 'Browser ini menolak penyimpanan data. Matikan mode penyamaran, lalu coba lagi.',
   NAMA_KOSONG: 'Isi nama lengkap minimal 2 huruf.',
 };
@@ -174,6 +175,15 @@ export default function MobileScannerPage() {
       p_username: form.username, p_password: form.password, p_device_id: ambilDeviceId(),
     });
     if (error) { setMessage(PESAN_KODE[kodeError(error)] || pesanError(error)); setLoading(false); return; }
+    // Terkunci di perangkat lain: dikembalikan sebagai data (bukan error) supaya tercatat di audit
+    if (data?.galat === 'HP_LAIN') {
+      const di = [namaBrowser(data.terkunci_ua), data.terkunci_sejak && `sejak ${formatTanggal(String(data.terkunci_sejak).slice(0, 10))}`].filter(Boolean).join(', ');
+      setMessage(di
+        ? `Akun ini terkunci di ${di}. Kalau ini HP-mu, buka lewat browser itu (atau ikon aplikasi di layar utama). Kalau sudah ganti HP, minta admin melepas HP lama.`
+        : PESAN_KODE.HP_LAIN);
+      setLoading(false); return;
+    }
+    if (!data?.token) { setMessage(PESAN_KODE[data?.galat] || 'Login gagal. Coba lagi.'); setLoading(false); return; }
     simpanToken('karyawan', data.token);
     const { data: sesi } = await supabase.rpc('fn_sesi_karyawan');
     setKaryawan(sesi || data.karyawan); await fetchDataHariIni(); fetchAllowance(); setStep(2); setLoading(false);
